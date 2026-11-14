@@ -18,7 +18,7 @@ const round1 = (n) => Math.round(n * 10) / 10;
 const round2 = (n) => Math.round(n * 100) / 100;
 const weekStart = (k) => { const d = parseKey(k); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return dkey(d); };
 const MORNING_START = 4, MORNING_END = 12; // weigh-in + photos happen in the morning
-const GOAL = { sets: 12, fuel: 5, water: 8, weight: null }; // ring goals (changeable in Settings); weight goal in kg
+const GOAL = { sets: 12, fuel: 5, water: 8, weight: null, perEx: 3, reps: 12 }; // ring goals (changeable in Settings); weight goal in kg
 
 let urls = [];
 const url = (blob) => { if (!blob) return ""; const u = URL.createObjectURL(blob); urls.push(u); return u; };
@@ -57,6 +57,7 @@ const P = {
   unit: '<path d="M4 7h16M4 12h10M4 17h6"/>',
   drop: '<path d="M12 3.5s6 6.4 6 10.5a6 6 0 0 1-12 0c0-4.1 6-10.5 6-10.5z"/>',
   minus: '<path d="M5 12h14"/>',
+  pen: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
   target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>',
   wand: '<path d="M4 20L15 9M14 4v2M19 9h2M17.5 5.5L19 4M11 3l.6 1.4L13 5l-1.4.6L11 7l-.6-1.4L9 5l1.4-.6z"/>',
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.2-2.4 3.8"/><path d="M12 17.2h.01"/>',
@@ -437,7 +438,7 @@ async function viewToday() {
           : `<div class="val"><span class="note">${!isToday ? "No weigh-in this morning" : morningOpen ? "Weigh in before noon" : hour < MORNING_START ? "Weigh in when you wake up" : "Missed this morning · tap to log anyway"}</span></div>`}
     </button>`;
 
-  const names = [...new Set(sets.sort((a, b) => a.at - b.at).map((s) => s.ex))];
+  const names = [...new Set(sets.sort((a, b) => a.at - b.at).map((s) => s.ex))].map(exName);
   const tTile = `<button class="tile" data-act="goTab" data-tab="train">
       <div class="top c-pink">${icon("train")}Workout<span class="tm">${sets.length ? hhmm(new Date(sets[0].at)) : ""}${icon("right")}</span></div>
       ${sets.length ? `<div class="val"><span class="big">${sets.length}</span><span class="u">sets</span><span class="note">${names.length} exercise${names.length > 1 ? "s" : ""}</span></div><div class="note">${esc(names.slice(0, 3).join(", "))}${names.length > 3 ? "…" : ""}</div>`
@@ -612,6 +613,20 @@ function bodySVG(view, load) {
     ${BODY[view].map(([id, ...shapes]) => `<g class="rg${lvl(load[id])}${S.focus.includes(id) ? " focus" : ""}" data-act="area" data-id="${id}" role="button" aria-label="${AREAS.find((a) => a.id === id).name}">${shapes.join("")}</g>`).join("")}
   </svg>`;
 }
+/* Exercise library. Every exercise has a fixed key (built-ins: their original name; your own: "c_…").
+   Sets store the key, so renaming never breaks history. Kept in settings store as "exlib". */
+const EX = { names: {}, custom: [], hidden: [] };
+const exName = (key) => EX.names[key] || EX.custom.find((c) => c.key === key)?.n || key;
+function areaExercises(areaId, withHidden) {
+  const area = AREAS.find((a) => a.id === areaId);
+  const built = area.ex.map((e) => ({ ...e, key: e.n, n: exName(e.n), custom: false }));
+  const own = EX.custom.filter((c) => c.area === areaId).map((c) => ({ ...c, n: exName(c.key), custom: true }));
+  const list = [...built, ...own];
+  return withHidden ? list : list.filter((e) => !EX.hidden.includes(e.key));
+}
+const saveEx = () => meta("exlib", { names: EX.names, custom: EX.custom, hidden: EX.hidden });
+const IMG_BASE = "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/";
+
 async function lastSetsFor(ex, beforeDate) {
   const rows = (await req(store("sets").index("ex").getAll(ex))).filter((s) => s.date < beforeDate);
   if (!rows.length) return null;
@@ -633,32 +648,40 @@ async function viewTrain() {
         <div class="legend"><span class="sw" style="background:color-mix(in srgb, var(--pink) 35%, var(--body-fill))"></span><span class="sw" style="background:color-mix(in srgb, var(--pink) 65%, var(--body-fill))"></span><span class="sw" style="background:var(--pink)"></span><span>Sets, last 7 days</span></div>
       </div>
       <div class="group" id="hAreas">${order.map((a) => `<button class="row" data-act="area" data-id="${a.id}">
-        <div class="main"><div class="t">${S.focus.includes(a.id) ? icon("star", "i star") + " " : ""}${a.name}</div><div class="s">${load[a.id] ? `${load[a.id]} sets this week` : `${a.ex.length} exercises`}</div></div>
+        <div class="main"><div class="t">${S.focus.includes(a.id) ? icon("star", "i star") + " " : ""}${a.name}</div><div class="s">${load[a.id] ? `${load[a.id]} sets this week` : `${areaExercises(a.id).length} exercises`}</div></div>
         ${counts[a.id] ? `<span class="badge" aria-label="${counts[a.id]} sets today">${counts[a.id]}</span>` : icon("right", "i chev")}</button>`).join("")}</div>
     </div>`;
   }
   const area = AREAS.find((a) => a.id === S.area);
-  const lasts = await Promise.all(area.ex.map((e) => lastSetsFor(e.n, S.date)));
+  const list = areaExercises(area.id), hiddenHere = areaExercises(area.id, true).length - list.length;
+  const lasts = await Promise.all(list.map((e) => lastSetsFor(e.key, S.date)));
   const isFocus = S.focus.includes(area.id);
   return `
-  <div class="group">${area.ex.map((e, i) => {
-    const done = today.filter((s) => s.ex === e.n).length, l = lasts[i];
-    return `<button class="row" data-act="logEx" data-i="${i}">
-      <div class="main"><div class="t">${esc(e.n)}</div><div class="s">${l ? `Last ${fmt(l.date, { day: "numeric", month: "short" })} · <span class="num">${l.sets.map(setText).join(", ")}</span>` : esc(e.eq)}</div></div>
-      ${done ? `<span class="badge">${done}</span>` : icon("right", "i chev")}</button>`;
-  }).join("")}</div>
-  <div class="foot">Tap an exercise to see how to do it and log your sets.</div>
+  <div class="group">${list.map((e, i) => {
+    const done = today.filter((s) => s.ex === e.key).length, l = lasts[i];
+    return `<div class="row exrow">
+      <button class="exmain" data-act="logEx" data-key="${esc(e.key)}">
+        <div class="main"><div class="t">${esc(e.n)}</div><div class="s">${l ? `Last ${fmt(l.date, { day: "numeric", month: "short" })} · <span class="num">${l.sets.map(setText).join(", ")}</span>` : esc(e.eq || "Your exercise")}</div></div>
+        ${done ? `<span class="badge${done >= GOAL.perEx ? " full" : ""}">${done}/${GOAL.perEx}</span>` : icon("right", "i chev")}
+      </button>
+      ${e.img ? `<button class="seehow" data-act="seeHow" data-key="${esc(e.key)}" aria-label="See how to do ${esc(e.n)}">${icon("photo")}<span>See how</span></button>` : ""}
+    </div>`;
+  }).join("")}
+    <button class="row ico addex" data-act="addEx"><span class="sq bg-pink">${icon("plus")}</span><div class="main"><div class="t">Add an exercise</div><div class="s">Your own, in ${esc(area.name.toLowerCase())}</div></div></button>
+  </div>
+  <div class="foot">Tap an exercise to log sets. Tap <b>See how</b> for a picture.${hiddenHere ? ` <button class="linkbtn" data-act="unhide" data-id="${area.id}">Show ${hiddenHere} removed</button>` : ""}</div>
   <div class="group" style="margin-top:22px"><button class="row center" data-act="focus" data-id="${area.id}">${isFocus ? "Remove from focus areas" : `Make ${area.name.toLowerCase()} a focus area`}</button></div>
   <div class="foot">Focus areas show first and get suggested on Today.</div>`;
 }
 
-async function logSheet(areaId, exIdx) {
-  const area = AREAS.find((a) => a.id === areaId), e = area.ex[exIdx];
-  const last = await lastSetsFor(e.n, S.date);
-  const todays = async () => (await req(store("sets").index("ex").getAll(e.n))).filter((s) => s.date === S.date).sort((a, b) => a.at - b.at);
+async function logSheet(areaId, key) {
+  const area = AREAS.find((a) => a.id === areaId), e = areaExercises(areaId, true).find((x) => x.key === key);
+  if (!e) return;
+  const last = await lastSetsFor(e.key, S.date);
+  const todays = async () => (await req(store("sets").index("ex").getAll(e.key))).filter((s) => s.date === S.date).sort((a, b) => a.at - b.at);
   let cur = await todays();
   const seed = cur[cur.length - 1] || last?.sets[0];
-  const wv = seed?.kg ? round1(toUnit(seed.kg)) : 0, rv = seed?.reps || 10, mv = seed?.min || 20, sv = seed?.sec || 30;
+  const wv = seed?.kg ? round1(toUnit(seed.kg)) : 0, rv = seed?.reps || GOAL.reps, mv = seed?.min || 20, sv = seed?.sec || 30;
   const stepper = (id, val, label) => `<div class="field"><div class="grouplabel" style="margin:0 4px 6px">${label}</div><div class="stepper"><button data-step="${id}" data-d="-1" aria-label="Less">−</button><input type="number" inputmode="decimal" id="${id}" value="${val}" aria-label="${label}"><button data-step="${id}" data-d="1" aria-label="More">+</button></div></div>`;
   const inputs = e.t === "cardio" ? stepper("sMin", mv, "Minutes")
     : e.t === "time" ? stepper("sSec", sv, "Seconds")
@@ -667,7 +690,13 @@ async function logSheet(areaId, exIdx) {
   openSheet({
     title: e.n, right: "Done",
     body: `
-      <div class="howto">${esc(e.h)}</div>
+      <div class="exactions">
+        ${e.img ? `<button class="chipbtn" id="xSee">${icon("photo")}See how</button>` : ""}
+        <button class="chipbtn" id="xRen">${icon("pen")}Rename</button>
+        <button class="chipbtn" id="xDel">${icon("trash")}Remove</button>
+      </div>
+      ${e.h ? `<div class="howto">${esc(e.h)}</div>` : ""}
+      <div class="setgoal" id="sGoal"></div>
       ${last ? `<div class="group" style="margin-bottom:16px"><div class="row ico"><span class="sq bg-pink">${icon("clock")}</span><div class="main"><div class="t">Last time · ${fmt(last.date, { weekday: "short", day: "numeric", month: "short" })}</div><div class="s num">${last.sets.map(setText).join(" · ")}</div></div></div></div>` : ""}
       ${inputs}
       <button class="btn fill block" id="sAdd">${icon("plus")}<span>Add set</span></button>
@@ -681,11 +710,28 @@ async function logSheet(areaId, exIdx) {
         inp.value = Math.max(0, round1((parseFloat(inp.value) || 0) + steps[b.dataset.step] * Number(b.dataset.d)));
         buzz(6);
       }));
+      $("#xSee", s) && ($("#xSee", s).onclick = () => showHow(e));
+      $("#xRen", s).onclick = async () => {
+        const nm = await promptBox("Rename exercise", "Your history stays with it.", exName(e.key));
+        if (!nm || nm === exName(e.key)) return;
+        if (e.custom) { const c = EX.custom.find((x) => x.key === e.key); c.n = nm; delete EX.names[e.key]; } else EX.names[e.key] = nm;
+        await saveEx(); $(".sbar .ttl", s).textContent = nm; toast(`Renamed to ${nm}`);
+      };
+      $("#xDel", s).onclick = async () => {
+        if (!EX.hidden.includes(e.key)) EX.hidden.push(e.key);
+        await saveEx(); closeSheet(); render();
+        toast(`${exName(e.key)} removed from list`, "trash", undo(async () => { EX.hidden = EX.hidden.filter((k) => k !== e.key); await saveEx(); render(); }));
+      };
+      const drawGoal = () => {
+        const g = $("#sGoal", s); if (!g) return;
+        const n = cur.length, of = GOAL.perEx;
+        g.innerHTML = `<span class="sgtxt">${n >= of ? `${icon("check")}All ${of} sets done` : `Set ${n + 1} of ${of}`}</span><span class="sgdots">${[...Array(Math.max(of, n))].map((_, i) => `<i class="${i < n ? "on" : ""}"></i>`).join("")}</span>`;
+      };
       let editing = null;
       const setEdit = (x) => {
         editing = x;
         $("#sAdd span", s).textContent = x ? `Save set ${cur.findIndex((c) => c.id === x.id) + 1}` : "Add set";
-        $("#sCancelEdit", s).hidden = !x;
+        $("#sCancelEdit", s).hidden = !x; drawGoal();
         if (x) {
           if (x.min != null) $("#sMin", s).value = x.min;
           else if (x.sec != null) $("#sSec", s).value = x.sec;
@@ -710,14 +756,15 @@ async function logSheet(areaId, exIdx) {
       drawList();
       $("#sCancelEdit", s).onclick = () => setEdit(null);
       $("#sAdd", s).onclick = async () => {
-        const row = editing ? { ...editing } : { id: uid(), date: S.date, at: Date.now(), ex: e.n, area: area.id };
+        const row = editing ? { ...editing } : { id: uid(), date: S.date, at: Date.now(), ex: e.key, area: area.id };
         if (e.t === "cardio") row.min = parseFloat($("#sMin", s).value) || 0;
         else if (e.t === "time") row.sec = parseFloat($("#sSec", s).value) || 0;
         else { row.kg = round2(fromUnit(parseFloat($("#sW", s).value) || 0)); row.reps = parseInt($("#sR", s).value) || 0; }
         if (!(row.min || row.sec || row.reps)) { toast("Enter a number first", "x"); return; }
         const wasEdit = !!editing;
         await put("sets", row); cur = await todays(); editing = null; setEdit(null); drawList(row.id); buzz(15);
-        toast(wasEdit ? "Set changed" : `Set ${cur.length} saved`);
+        drawGoal();
+        toast(wasEdit ? "Set changed" : cur.length === GOAL.perEx ? `All ${GOAL.perEx} sets done` : `Set ${cur.length} of ${GOAL.perEx} saved`, cur.length === GOAL.perEx && !wasEdit ? "star" : "checkc");
       };
     }
   });
@@ -979,7 +1026,7 @@ async function viewCalendar() {
   if (S.calSel && S.calSel.startsWith(S.calMonth)) {
     const k = mk[S.calSel];
     const sets = k?.t ? await byDate("sets", S.calSel) : [];
-    const names = [...new Set(sets.map((s) => s.ex))];
+    const names = [...new Set(sets.map((s) => s.ex))].map(exName);
     peek = `<div class="sh"><h2>${fmt(S.calSel, { weekday: "long", day: "numeric", month: "short" })}</h2><button class="aside" data-act="day" data-k="${S.calSel}" data-to="today">Open day</button></div>
     <div class="card peek">${ringsSVG(ringVals(k), 88, 11, 2.5)}
       <div>
@@ -1135,7 +1182,10 @@ function bind(m) {
       }
       else if (act === "handsfree") handsFree();
       else if (act === "bodyView") { S.bodyView = d.v; render(); }
-      else if (act === "logEx") logSheet(S.area, Number(d.i));
+      else if (act === "logEx") logSheet(S.area, d.key);
+      else if (act === "seeHow") showHow(areaExercises(S.area, true).find((x) => x.key === d.key));
+      else if (act === "addEx") addExerciseSheet(S.area);
+      else if (act === "unhide") { const keys = areaExercises(d.id, true).map((x) => x.key); EX.hidden = EX.hidden.filter((k) => !keys.includes(k)); await saveEx(); render(); toast("Exercises back in the list"); }
       else if (act === "shoot") shootFlow(d.angle);
       else if (act === "range") { S.range = d.r; render(); }
       else if (act === "cmp") { S.cmpAngle = d.a; S.cmpA = S.cmpB = null; render(); }
@@ -1242,7 +1292,7 @@ async function openSettings() {
       <div class="group">
         <div class="row ico"><span class="sq bg-green">${icon("target")}</span><div class="main"><div class="t">Goal weight</div><div class="s">Shown on the chart and weight card</div></div>
           <input type="number" inputmode="decimal" step="0.1" id="gWeight" class="goalin" placeholder="None" value="${GOAL.weight ? wFmt(GOAL.weight) : ""}" aria-label="Goal weight in ${S.unit}"><span class="muted">${S.unit}</span></div>
-        ${[["sets", "Sets per day", "Train ring", "bg-pink", "train", 1, 60], ["fuel", "Meals and drinks per day", "Fuel ring", "bg-orange", "food", 1, 20], ["water", "Glasses of water per day", "Fuel ring", "bg-cyan", "drop", 1, 20]].map(([key, t, sub, bg, ic, lo, hi]) => `
+        ${[["perEx", "Sets per exercise", "Your usual: 3", "bg-pink", "train", 1, 10], ["reps", "Reps per set", "Starting number for new exercises", "bg-pink", "train", 1, 50], ["sets", "Sets per day", "Train ring", "bg-pink", "train", 1, 60], ["fuel", "Meals and drinks per day", "Fuel ring", "bg-orange", "food", 1, 20], ["water", "Glasses of water per day", "Fuel ring", "bg-cyan", "drop", 1, 20]].map(([key, t, sub, bg, ic, lo, hi]) => `
         <div class="row ico"><span class="sq ${bg}">${icon(ic)}</span><div class="main"><div class="t">${t}</div><div class="s">${sub}</div></div>
           <div class="ministep" data-goal="${key}" data-lo="${lo}" data-hi="${hi}"><button data-d="-1" aria-label="Less">${icon("minus")}</button><span class="num">${GOAL[key]}</span><button data-d="1" aria-label="More">${icon("plus")}</button></div></div>`).join("")}
       </div>
@@ -1342,6 +1392,73 @@ async function importAll(file) {
     await loadPrefs();
     closeSheet(); render(); toast("Backup restored", "cloud");
   } catch (e) { toast("Restore failed: " + e.message, "x"); }
+}
+
+/* ---------- exercise picture (public-domain free-exercise-db) ---------- */
+function showHow(e) {
+  if (!e?.img) return;
+  const wrap = document.createElement("div");
+  wrap.className = "alert-wrap how-wrap";
+  wrap.innerHTML = `<div class="how" role="dialog" aria-modal="true" aria-label="How to do ${esc(e.n)}">
+      <div class="how-top"><h4>${esc(e.n)}</h4><button class="circ sm" data-x aria-label="Close">${icon("x")}</button></div>
+      <div class="how-pics">${[0, 1].map((i) => `<figure><img src="${IMG_BASE}${encodeURIComponent(e.img)}/${i}.jpg" alt="${esc(e.n)}, ${i ? "finish" : "start"} position" decoding="async" onerror="this.closest('.how-pics').classList.add('offline')"><figcaption>${i ? "Finish" : "Start"}</figcaption></figure>`).join("")}
+        <div class="how-off">Pictures need an internet connection the first time. After that they're saved on this phone.</div></div>
+      <div class="how-tip">${esc(e.h || "")}</div>
+      <div class="how-play"><span>Tap the picture to switch between start and finish.</span></div>
+    </div>`;
+  const close = () => { wrap.classList.add("out"); setTimeout(() => wrap.remove(), animOn() ? 180 : 0); };
+  wrap.onclick = (ev) => { if (ev.target === wrap || ev.target.closest("[data-x]")) close(); };
+  const pics = $(".how-pics", wrap);
+  pics.onclick = () => pics.classList.toggle("flip");
+  // gently alternate start/finish like a short animation
+  let t = setInterval(() => { if (!wrap.isConnected) return clearInterval(t); if (animOn()) pics.classList.toggle("flip"); }, 1400);
+  document.body.appendChild(wrap);
+}
+
+/* iPhone-style text box (rename) */
+function promptBox(title, message, value = "") {
+  return new Promise((resolve) => {
+    const wrap = document.createElement("div");
+    wrap.className = "alert-wrap";
+    wrap.innerHTML = `<div class="alert" role="alertdialog" aria-modal="true"><div class="alert-body"><h4>${esc(title)}</h4>${message ? `<p>${esc(message)}</p>` : ""}
+      <input type="text" class="alert-in" maxlength="40" value="${esc(value)}" aria-label="${esc(title)}"></div>
+      <div class="alert-btns"><button data-a="0">Cancel</button><button data-a="1" class="strong">Save</button></div></div>`;
+    const inp = $(".alert-in", wrap);
+    const done = (ok) => { const v = inp.value.trim(); wrap.classList.add("out"); setTimeout(() => wrap.remove(), animOn() ? 180 : 0); resolve(ok && v ? v : null); };
+    wrap.querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => done(b.dataset.a === "1")));
+    inp.onkeydown = (ev) => { if (ev.key === "Enter") done(true); if (ev.key === "Escape") done(false); };
+    document.body.appendChild(wrap); setTimeout(() => { inp.focus(); inp.select(); }, 50);
+  });
+}
+
+/* add your own exercise */
+function addExerciseSheet(areaId) {
+  const area = AREAS.find((a) => a.id === areaId);
+  let t = areaId === "cardio" ? "cardio" : "reps";
+  openSheet({
+    title: "New exercise", left: "Cancel", right: "Add",
+    body: `
+      <div class="grouplabel" style="margin-top:4px">Name</div>
+      <div class="field"><input type="text" id="nxName" maxlength="40" placeholder="e.g. Dumbbell Bench Press"></div>
+      <div class="grouplabel">Equipment (optional)</div>
+      <div class="field"><input type="text" id="nxEq" maxlength="30" placeholder="e.g. Dumbbells, flat bench"></div>
+      <div class="grouplabel">How you log it</div>
+      <div class="seg" id="nxType">${[["reps", "Weight"], ["body", "Bodyweight"], ["time", "Seconds"], ["cardio", "Minutes"]].map(([id, n]) => `<button class="${t === id ? "on" : ""}" data-t="${id}">${n}</button>`).join("")}</div>
+      <div class="grouplabel">Your tip (optional)</div>
+      <div class="field"><textarea id="nxTip" maxlength="200" placeholder="Anything to remember, e.g. seat height 4"></textarea></div>
+      <div class="foot">Adds to ${esc(area.name.toLowerCase())}. You can rename or remove it later.</div>`,
+    onOpen: (s) => {
+      setTimeout(() => $("#nxName", s).focus(), 350);
+      s.querySelectorAll("#nxType button").forEach((b) => (b.onclick = () => { segMove(b); t = b.dataset.t; }));
+      $("[data-sb=r]", s).onclick = async () => {
+        const n = $("#nxName", s).value.trim();
+        if (!n) { toast("Give it a name", "x"); return; }
+        const key = "c_" + uid();
+        EX.custom.push({ key, area: areaId, n, eq: $("#nxEq", s).value.trim(), t, h: $("#nxTip", s).value.trim() });
+        await saveEx(); closeSheet(); render(); toast(`${n} added`);
+      };
+    }
+  });
 }
 
 /* ======================================================================
@@ -1478,6 +1595,7 @@ async function loadPrefs() {
   S.unit = (await meta("unit")) || "kg";
   S.focus = (await meta("focus")) || [];
   Object.assign(GOAL, (await meta("goals")) || {});
+  Object.assign(EX, { names: {}, custom: [], hidden: [] }, (await meta("exlib")) || {});
 }
 
 /* ---------- start ---------- */

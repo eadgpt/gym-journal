@@ -821,3 +821,83 @@ body { background: transparent; }
 /* toast: full-width centring so long messages stay on one or two lines */
 .toast { left: 12px; right: 12px; transform: none; margin: 0 auto; width: fit-content; max-width: min(92vw, 420px); animation: toast2 .35s var(--ease-drawer); }
 @keyframes toast2 { from { transform: translateY(-16px) scale(.92); } }
+
+/* ======================================================================
+   v7 MUTED PALETTE — one calm family, same mood in light and dark.
+   Morning = slate blue · Train = dusty rose · Fuel = sand · Water = mist teal · Photos = dusty lilac
+   ====================================================================== */
+:root {
+  --pink: #b5737f;   --pink-t: #8a4b57;
+  --indigo: #6b7a99; --indigo-t: #47546f;
+  --orange: #c49a6c; --orange-t: #81603a;
+  --cyan: #6f98a3;   --cyan-t: #466c76;
+  --purple: #8f84a8; --purple-t: #62577d;
+  --green: #6f9a7e;  --green-t: #476f55;
+  --red: #c06a5f;    --red-t: #93463d;
+}
+:root[data-theme="dark"] {
+  --pink: #c98d98;   --pink-t: #e2b3bb;
+  --indigo: #8d9bbb; --indigo-t: #b8c3da;
+  --orange: #d3ad83; --orange-t: #e8cca9;
+  --cyan: #8bb2bc;   --cyan-t: #b3cfd5;
+  --purple: #a99fc0; --purple-t: #cbc4dc;
+  --green: #8db59a;  --green-t: #b3d0bc;
+  --red: #d28b81;    --red-t: #e8b0a8;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --pink: #c98d98;   --pink-t: #e2b3bb;
+    --indigo: #8d9bbb; --indigo-t: #b8c3da;
+    --orange: #d3ad83; --orange-t: #e8cca9;
+    --cyan: #8bb2bc;   --cyan-t: #b3cfd5;
+    --purple: #a99fc0; --purple-t: #cbc4dc;
+    --green: #8db59a;  --green-t: #b3d0bc;
+    --red: #d28b81;    --red-t: #e8b0a8;
+  }
+}
+/* calmer extras that used bright effects */
+.handsbtn { background: var(--purple); }
+.ringcard.celebrate { animation-name: celebrateSoft; }
+@keyframes celebrateSoft { 25% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--pink) 18%, transparent); } }
+:root[data-glass="on"] .btn.fill { box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 22%, transparent), inset 0 0.5px 0 rgba(255,255,255,.5); }
+
+/* ---------- v7 exercise list, actions, pictures, set goal ---------- */
+.exrow { padding: 0; align-items: stretch; }
+.exmain { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; border: 0; background: none; text-align: left; padding: 10px 8px 10px 16px; color: inherit; }
+.exmain:active { background: var(--fill); }
+.seehow { flex: none; border: 0; background: none; color: var(--accent-t); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 0 12px; font-size: 13px; font-weight: 600; border-left: 0.5px solid var(--sep); min-width: 70px; }
+.seehow .i { width: 20px; height: 20px; }
+.seehow:active { background: var(--fill); }
+.group .exrow + .exrow::before, .group .exrow + .addex::before { left: 16px; }
+.badge.full { background: var(--green); }
+.linkbtn { border: 0; background: none; padding: 0; color: var(--accent-t); font-weight: 600; font-size: inherit; }
+
+.exactions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+.chipbtn { border: 0; height: 36px; padding: 0 14px; border-radius: 999px; background: var(--fill); color: var(--accent-t); font-size: 15px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+.chipbtn .i { width: 17px; height: 17px; }
+.chipbtn:active { transform: scale(.95); }
+.setgoal { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 4px 12px; font-size: 16px; font-weight: 650; }
+.setgoal .sgtxt { display: inline-flex; align-items: center; gap: 6px; }
+.setgoal .sgtxt .i { width: 18px; height: 18px; color: var(--green); }
+.sgdots { display: flex; gap: 6px; }
+.sgdots i { width: 12px; height: 12px; border-radius: 50%; background: var(--fill-2); transition: background-color .3s, transform .3s var(--ease-drawer); }
+.sgdots i.on { background: var(--pink); transform: scale(1.1); }
+
+.alert-in { margin-top: 12px; width: 100%; font-size: 17px; padding: 10px 12px; border-radius: 10px; background: var(--bg); box-shadow: inset 0 0 0 0.5px var(--sep); }
+
+.how-wrap { padding: 16px; }
+.how { width: min(440px, 100%); max-height: 92dvh; overflow-y: auto; border-radius: 22px; background: var(--card); box-shadow: var(--glass-shadow); padding: 16px; animation: alertin .3s var(--ease-drawer); }
+.how-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.how-top h4 { margin: 0; font-size: 20px; font-weight: 700; }
+.how-pics { position: relative; aspect-ratio: 4 / 3; border-radius: 16px; overflow: hidden; background: #fff; cursor: pointer; }
+.how-pics figure { position: absolute; inset: 0; margin: 0; transition: opacity .5s ease; }
+.how-pics figure:nth-of-type(2) { opacity: 0; }
+.how-pics.flip figure:nth-of-type(1) { opacity: 0; }
+.how-pics.flip figure:nth-of-type(2) { opacity: 1; }
+.how-pics img { width: 100%; height: 100%; object-fit: contain; }
+.how-pics figcaption { position: absolute; left: 10px; bottom: 10px; font-size: 14px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: rgba(0,0,0,.55); color: #fff; }
+.how-off { display: none; position: absolute; inset: 0; place-items: center; text-align: center; padding: 24px; font-size: 16px; color: #555; background: #f4f4f6; }
+.how-pics.offline .how-off { display: grid; }
+.how-pics.offline figure { display: none; }
+.how-tip { margin-top: 12px; font-size: 16px; line-height: 1.45; color: var(--ink); }
+.how-play { margin-top: 8px; font-size: 14px; color: var(--ink-2); }
