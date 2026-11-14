@@ -64,11 +64,14 @@ const P = {
 };
 const icon = (n, cls = "i") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n]}</svg>`;
 
-function toast(msg, ic = "checkc") {
-  const t = $("#toast"); t.innerHTML = `${icon(ic)}<span>${esc(msg)}</span>`; t.hidden = false;
+function toast(msg, ic = "checkc", action) {
+  const t = $("#toast");
+  t.innerHTML = `${icon(ic)}<span>${esc(msg)}</span>${action ? `<button class="toast-act">${esc(action.label)}</button>` : ""}`; t.hidden = false;
+  if (action) $(".toast-act", t).onclick = () => { t.hidden = true; action.fn(); };
   t.style.animation = "none"; void t.offsetWidth; t.style.animation = "";
-  clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), 2000);
+  clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), action ? 6000 : 2000);
 }
+const undo = (fn) => ({ label: "Undo", fn });
 const buzz = (ms = 12) => { try { navigator.vibrate && navigator.vibrate(ms); } catch {} };
 
 /* ---------- database ---------- */
@@ -356,24 +359,32 @@ async function suggestArea() {
   return ranked[0];
 }
 
+const dayFolded = () => { try { return localStorage.getItem("gj_dayfold") === "1"; } catch { return false; } };
+
+/* suggestions you said "not today" to (kept for today only) */
+function getSkips() { try { const o = JSON.parse(localStorage.getItem("gj_skip") || "{}"); return o.date === todayKey() ? o.kinds || [] : []; } catch { return []; } }
+function setSkips(kinds) { try { localStorage.setItem("gj_skip", JSON.stringify({ date: todayKey(), kinds })); } catch {} }
+
 async function upNext(day, w, photos, sets, food) {
   if (S.date !== todayKey()) return "";
-  const h = new Date().getHours();
-  const card = (act, data, color, ic, k, t, s) => `<button class="upnext" id="hNext" data-act="${act}" ${data}><span class="sq ${color}">${icon(ic)}</span><span><span class="k">${k}</span><br><span class="t">${t}</span>${s ? `<br><span class="s">${s}</span>` : ""}</span>${icon("right", "i go")}</button>`;
+  const h = new Date().getHours(), skip = getSkips();
+  const card = (kind, act, data, color, ic, k, t, s) => `<div class="upnext" id="hNext"><button class="un-main" data-act="${act}" ${data}><span class="sq ${color}">${icon(ic)}</span><span><span class="k">${k}</span><br><span class="t">${t}</span>${s ? `<br><span class="s">${s}</span>` : ""}</span></button><button class="un-x" data-act="skipNext" data-kind="${kind}" aria-label="Not today">${icon("x")}</button></div>`;
   if (h >= MORNING_START && h < MORNING_END) {
-    if (!w) return card("weigh", "", "bg-indigo", "scale", "Up next · Morning check-in", "Step on the scale", "After the toilet, before food or water");
+    if (!w && !skip.includes("weigh")) return card("weigh", "weigh", "", "bg-indigo", "scale", "Up next · Morning check-in", "Step on the scale", "After the toilet, before food or water");
     const missing = ANGLES.find((a) => !photos.some((p) => p.angle === a.id));
-    if (!photos.length) return card("handsfree", "", "bg-purple", "wand", "Up next · Morning photos", "Take all 3 hands-free", "Prop the phone up and follow the voice");
-    if (missing) return card("shoot", `data-angle="${missing.id}"`, "bg-purple", "photo", `Up next · Photo ${photos.length + 1} of 3`, `Take your ${missing.name.toLowerCase()} photo`, missing.tip);
+    if (!skip.includes("photos")) {
+      if (!photos.length) return card("photos", "handsfree", "", "bg-purple", "wand", "Up next · Morning photos", "Take all 3 hands-free", "Prop the phone up and follow the voice");
+      if (missing) return card("photos", "shoot", `data-angle="${missing.id}"`, "bg-purple", "photo", `Up next · Photo ${photos.length + 1} of 3`, `Take your ${missing.name.toLowerCase()} photo`, missing.tip);
+    }
   }
-  if (!sets.length && h < 22) {
+  if (!sets.length && h < 22 && !skip.includes("train")) {
     const sg = await suggestArea();
     const why = sg.focus ? "Your focus area" : sg.days >= 99 ? "Not trained yet" : `Last trained ${sg.days === 1 ? "yesterday" : `${sg.days} days ago`}`;
-    return card("area", `data-id="${sg.a.id}"`, "bg-pink", "train", "Up next · Workout", `Train ${sg.a.name.toLowerCase()}`, why);
+    return card("train", "area", `data-id="${sg.a.id}"`, "bg-pink", "train", "Up next · Workout", `Train ${sg.a.name.toLowerCase()}`, why);
   }
   const meal = h >= 11 && h < 15 ? ["lunch", 11] : h >= 17 && h < 22 ? ["dinner", 17] : h >= 6 && h < 11 ? ["breakfast", 6] : null;
-  if (meal && !food.some((f) => f.kind === "food" && Number(f.time.slice(0, 2)) >= meal[1])) {
-    return card("addFood", 'data-kind="food"', "bg-orange", "food", "Up next", `Log ${meal[0]}`, "A quick note or a photo is enough");
+  if (meal && !skip.includes(meal[0]) && !food.some((f) => f.kind === "food" && Number(f.time.slice(0, 2)) >= meal[1])) {
+    return card(meal[0], "addFood", 'data-kind="food"', "bg-orange", "food", "Up next", `Log ${meal[0]}`, "A quick note or a photo is enough");
   }
   return "";
 }
@@ -407,7 +418,10 @@ async function viewToday() {
     <div class="ringleg">
       <div><div class="k indigo">Morning</div><div class="v"><span data-count="${(w ? 1 : 0) + Math.min(3, photos.length)}" data-ck="m">${(w ? 1 : 0) + Math.min(3, photos.length)}</span><small>/4</small></div></div>
       <div><div class="k pink">Train</div><div class="v"><span data-count="${sets.length}" data-ck="t">${sets.length}</span><small>/${GOAL.sets} sets</small></div></div>
-      <div><div class="k orange">Fuel</div><div class="v"><span data-count="${food.length}" data-ck="f">${food.length}</span><small>/${GOAL.fuel}</small></div><div class="ringsub c-cyan">${icon("drop")}<span data-count="${water}" data-ck="wa">${water}</span>/${GOAL.water} water</div></div>
+      <div><div class="k orange">Fuel</div>
+        <div class="fuelrow"><span class="fl">Food</span><span class="fbar"><i style="width:${Math.min(100, Math.round(food.length / GOAL.fuel * 100))}%;background:var(--orange)"></i></span><b class="num"><span data-count="${food.length}" data-ck="f">${food.length}</span>/${GOAL.fuel}</b></div>
+        <div class="fuelrow"><span class="fl">Water</span><span class="fbar"><i style="width:${Math.min(100, Math.round(water / GOAL.water * 100))}%;background:var(--cyan)"></i></span><b class="num"><span data-count="${water}" data-ck="wa">${water}</span>/${GOAL.water}</b></div>
+      </div>
     </div></div>`;
 
   const next = await upNext(S.date, w, photos, sets, food);
@@ -441,8 +455,8 @@ async function viewToday() {
   const shown = Math.min(16, Math.max(GOAL.water, water));
   const waterTile = `<div class="tile watertile" id="hWater">
       <div class="top c-cyan">${icon("drop")}Water<span class="tm">${water >= GOAL.water ? `${icon("check")}Goal reached` : `${GOAL.water - water} to go`}</span></div>
-      <div class="glasses" role="group" aria-label="${water} of ${GOAL.water} glasses">${[...Array(shown)].map((_, i) => `<button class="glass${i < water ? " full" : ""}${i === water - 1 && S.waterJust ? " just" : ""}" data-act="waterSet" data-n="${i + 1 === water ? i : i + 1}" aria-label="${i < water ? `Remove glass ${i + 1}` : `Fill glass ${i + 1}`}"><i></i></button>`).join("")}</div>
-      <div class="wbtns"><span class="big num" data-count="${water}" data-ck="wa2">${water}</span><span class="u">/ ${GOAL.water} glasses</span><button class="btn fill" data-act="water" data-d="1">${icon("plus")}Glass</button></div>
+      <div class="glasses" role="group" aria-label="${water} of ${GOAL.water} glasses">${[...Array(shown)].map((_, i) => `<button class="glass${i < water ? " full" : ""}${i === water - 1 && S.waterJust ? " just" : ""}" data-act="water" data-d="1" aria-label="Add a glass of water"><i></i></button>`).join("")}</div>
+      <div class="wbtns"><span class="big num" data-count="${water}" data-ck="wa2">${water}</span><span class="u">/ ${GOAL.water} glasses</span><button class="circ sm wminus" data-act="water" data-d="-1" aria-label="Remove a glass" ${water ? "" : "disabled"}>${icon("minus")}</button><button class="btn fill" data-act="water" data-d="1">${icon("plus")}Glass</button></div>
     </div>`;
   S.waterJust = false;
 
@@ -453,7 +467,7 @@ async function viewToday() {
 
   /* timeline */
   const items = [];
-  if (w) items.push({ tm: w.time || "07:00", html: `<div class="row tlrow"><span class="tmc">${esc(w.time || "")}</span><span class="dotc bg-indigo"></span><div class="main"><div class="t">Weighed <span class="num">${wFmt(w.kg)} ${S.unit}</span></div></div></div>` });
+  if (w) items.push({ tm: w.time || "07:00", html: `<button class="row tlrow" data-act="weigh"><span class="tmc">${esc(w.time || "")}</span><span class="dotc bg-indigo"></span><div class="main"><div class="t">Weighed <span class="num">${wFmt(w.kg)} ${S.unit}</span></div></div></button>` });
   food.forEach((f) => items.push({ tm: f.time, html: `<button class="row tlrow" data-act="editFood" data-id="${f.id}"><span class="tmc">${esc(f.time)}</span><span class="dotc ${f.kind === "drink" ? "bg-cyan" : "bg-orange"}"></span><div class="main"><div class="t">${esc(f.text) || (f.kind === "drink" ? "Drink" : "Meal")}</div><div class="s">${f.kind === "drink" ? "Drink" : "Food"}</div></div>${f.photo ? `<img class="thumb" src="${url(f.thumb || f.photo)}" alt="">` : ""}</button>` }));
   if (sets.length) { const tm = hhmm(new Date(sets[0].at)); items.push({ tm, html: `<button class="row tlrow" data-act="goTab" data-tab="train"><span class="tmc">${tm}</span><span class="dotc bg-pink"></span><div class="main"><div class="t">Workout · ${sets.length} sets</div><div class="s">${esc(names.join(", "))}</div></div></button>` }); }
   if (photos.length) { const tm = hhmm(new Date(Math.min(...photos.map((p) => p.at || Date.now())))); items.push({ tm, html: `<button class="row tlrow" data-act="goTab" data-tab="photos"><span class="tmc">${tm}</span><span class="dotc bg-purple"></span><div class="main"><div class="t">Progress photos</div><div class="s">${photos.length} of 3 angles</div></div></button>` }); }
@@ -480,8 +494,8 @@ async function viewToday() {
   return `<div class="cols tgrid"><div class="col ca">${week}${rings}${next}</div><div class="col cb">
     <div class="sh"><h2>Summary</h2></div>
     <div class="tiles" id="hTiles">${wTile}${waterTile}${tTile}${fTile}${pTile}</div>
-    </div><div class="col cc"><div class="sh"><h2>Your day</h2><span class="aside gray">${items.length ? `${items.length} entr${items.length > 1 ? "ies" : "y"}` : ""}</span></div>
-    <div class="group" id="hDay">${items.length ? items.map((i) => i.html).join("") : `<div class="empty">${isToday ? "Your day fills in as you log. Start with the <b>morning weigh-in</b>, then add meals and drinks as you go." : "Nothing was logged on this day. You can still add entries with +."}</div>`}</div>
+    </div><div class="col cc"><button class="sh shbtn${dayFolded() ? " folded" : ""}" data-act="dayFold" aria-expanded="${!dayFolded()}"><h2>Your day</h2><span class="aside gray">${items.length ? `${items.length} entr${items.length > 1 ? "ies" : "y"}` : ""}${icon("right", "i foldchev")}</span></button>
+    <div class="group${dayFolded() ? " hide" : ""}" id="hDay">${items.length ? items.map((i) => i.html).join("") : `<div class="empty">${isToday ? "Your day fills in as you log. Start with the <b>morning weigh-in</b>, then add meals and drinks as you go." : "Nothing was logged on this day. You can still add entries with +."}</div>`}</div>
     ${notes}</div></div>`;
 }
 
@@ -506,6 +520,7 @@ async function weighSheet() {
         <div class="muted" style="font-size:15px;margin-top:4px">${prev ? `Last time ${wFmt(prev.kg)} ${S.unit} · ${fmt(prev.date, { weekday: "short", day: "numeric", month: "short" })}` : "Your first weigh-in"}</div>
       </div>
       <div class="foot">${late ? "It's outside the morning. Weights later in the day read higher, so compare with care." : "Same time each morning: after the toilet, before food or water."}</div>
+      <div class="group" style="margin-top:16px"><label class="row ico"><span class="sq bg-gray">${icon("clock")}</span><div class="main"><div class="t">Time</div></div><input type="time" id="wTime" value="${w?.time || (isToday ? hhmm() : "07:00")}" style="width:auto;background:var(--fill);padding:6px 10px;font-size:17px"></label></div>
       ${w ? `<div class="group" style="margin-top:22px"><button class="row center danger" id="wDel">Remove weigh-in</button></div>` : ""}`,
     onOpen: (s) => {
       const inp = $("#wIn", s);
@@ -513,12 +528,15 @@ async function weighSheet() {
       const save = async () => {
         const v = parseFloat(inp.value);
         if (!v || v < 20 || v > 400) { toast("Enter your weight", "x"); return; }
-        await put("weight", { date: S.date, kg: round2(fromUnit(v)), time: w?.time || (isToday ? hhmm() : "07:00") });
+        await put("weight", { date: S.date, kg: round2(fromUnit(v)), time: $("#wTime", s).value || w?.time || (isToday ? hhmm() : "07:00") });
         closeSheet(); buzz(15); render(); toast("Weigh-in saved");
       };
       $("[data-sb=r]", s).onclick = save;
       inp.onkeydown = (e) => { if (e.key === "Enter") save(); };
-      $("#wDel", s) && ($("#wDel", s).onclick = async () => { if (await ask("Remove this weigh-in?", "", "Remove", true)) { await del("weight", S.date); closeSheet(); render(); toast("Weigh-in removed", "trash"); } });
+      $("#wDel", s) && ($("#wDel", s).onclick = async () => {
+        await del("weight", w.date); closeSheet(); render();
+        toast("Weigh-in removed", "trash", undo(async () => { await put("weight", w); render(); }));
+      });
     }
   });
 }
@@ -558,7 +576,10 @@ function foodSheet(kind, existing) {
         await put("food", { ...f, text, time: $("#fTime", s).value || hhmm(), kind: k, photo, thumb });
         closeSheet(); buzz(12); render(); toast(existing ? "Saved" : k === "drink" ? "Drink added" : "Food added");
       };
-      if (existing) $("#fDel", s).onclick = async () => { if (await ask("Delete this entry?", "It will be removed from your day.", "Delete", true)) { await del("food", f.id); closeSheet(); render(); toast("Deleted", "trash"); } };
+      if (existing) $("#fDel", s).onclick = async () => {
+        await del("food", f.id); closeSheet(); render();
+        toast("Entry deleted", "trash", undo(async () => { await put("food", existing); render(); }));
+      };
       if (!existing) setTimeout(() => $("#fText", s).focus(), 350);
     }
   });
@@ -649,8 +670,9 @@ async function logSheet(areaId, exIdx) {
       <div class="howto">${esc(e.h)}</div>
       ${last ? `<div class="group" style="margin-bottom:16px"><div class="row ico"><span class="sq bg-pink">${icon("clock")}</span><div class="main"><div class="t">Last time · ${fmt(last.date, { weekday: "short", day: "numeric", month: "short" })}</div><div class="s num">${last.sets.map(setText).join(" · ")}</div></div></div></div>` : ""}
       ${inputs}
-      <button class="btn fill block" id="sAdd">${icon("plus")}Add set</button>
-      <div class="grouplabel">Today's sets</div>
+      <button class="btn fill block" id="sAdd">${icon("plus")}<span>Add set</span></button>
+      <button class="btn block" id="sCancelEdit" style="margin-top:8px" hidden>Cancel change</button>
+      <div class="grouplabel">Today's sets · tap one to change it</div>
       <div class="group" id="sList"></div>`,
     onOpen: (s) => {
       const steps = { sW: S.unit === "lb" ? 5 : 2.5, sR: 1, sMin: 5, sSec: 10 };
@@ -659,21 +681,43 @@ async function logSheet(areaId, exIdx) {
         inp.value = Math.max(0, round1((parseFloat(inp.value) || 0) + steps[b.dataset.step] * Number(b.dataset.d)));
         buzz(6);
       }));
+      let editing = null;
+      const setEdit = (x) => {
+        editing = x;
+        $("#sAdd span", s).textContent = x ? `Save set ${cur.findIndex((c) => c.id === x.id) + 1}` : "Add set";
+        $("#sCancelEdit", s).hidden = !x;
+        if (x) {
+          if (x.min != null) $("#sMin", s).value = x.min;
+          else if (x.sec != null) $("#sSec", s).value = x.sec;
+          else { $("#sW", s).value = round1(toUnit(x.kg || 0)); $("#sR", s).value = x.reps; }
+          s.scrollTo({ top: 0, behavior: animOn() ? "smooth" : "auto" });
+        }
+        drawList();
+      };
       const drawList = (newId) => {
+        if (!s.isConnected || !$("#sList", s)) return;
         $("#sList", s).innerHTML = cur.length
-          ? cur.map((x, i) => `<div class="row${x.id === newId ? " new" : ""}"><div class="setrow main"><span class="n">${i + 1}</span><span class="w">${setText(x)}</span><button class="x" data-del="${x.id}" aria-label="Delete set ${i + 1}">${icon("x")}</button></div></div>`).join("")
+          ? cur.map((x, i) => `<div class="row${x.id === newId ? " new" : ""}${editing?.id === x.id ? " editing" : ""}"><div class="setrow main"><span class="n">${i + 1}</span><button class="w setpick" data-edit="${x.id}" aria-label="Change set ${i + 1}">${setText(x)}</button><button class="x" data-del="${x.id}" aria-label="Delete set ${i + 1}">${icon("x")}</button></div></div>`).join("")
           : `<div class="empty">No sets yet. Set the numbers, then tap <b>Add set</b> after each one.</div>`;
-        s.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => { await del("sets", b.dataset.del); cur = await todays(); drawList(); }));
+        s.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => setEdit(cur.find((c) => c.id === b.dataset.edit))));
+        s.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
+          const gone = cur.find((c) => c.id === b.dataset.del);
+          await del("sets", gone.id); if (editing?.id === gone.id) editing = null;
+          cur = await todays(); setEdit(editing);
+          toast("Set deleted", "trash", undo(async () => { await put("sets", gone); cur = await todays(); drawList(gone.id); if (!s.isConnected || $("#sheetWrap").hidden) render(); }));
+        }));
       };
       drawList();
+      $("#sCancelEdit", s).onclick = () => setEdit(null);
       $("#sAdd", s).onclick = async () => {
-        const row = { id: uid(), date: S.date, at: Date.now(), ex: e.n, area: area.id };
+        const row = editing ? { ...editing } : { id: uid(), date: S.date, at: Date.now(), ex: e.n, area: area.id };
         if (e.t === "cardio") row.min = parseFloat($("#sMin", s).value) || 0;
         else if (e.t === "time") row.sec = parseFloat($("#sSec", s).value) || 0;
         else { row.kg = round2(fromUnit(parseFloat($("#sW", s).value) || 0)); row.reps = parseInt($("#sR", s).value) || 0; }
         if (!(row.min || row.sec || row.reps)) { toast("Enter a number first", "x"); return; }
-        await put("sets", row); cur = await todays(); drawList(row.id); buzz(15);
-        toast(`Set ${cur.length} saved`);
+        const wasEdit = !!editing;
+        await put("sets", row); cur = await todays(); editing = null; setEdit(null); drawList(row.id); buzz(15);
+        toast(wasEdit ? "Set changed" : `Set ${cur.length} saved`);
       };
     }
   });
@@ -769,7 +813,8 @@ async function shootFlow(angle) {
   $("#cFlip", el).onclick = () => { facing = facing === "user" ? "environment" : "user"; start(); };
   $("#cLib", el).onclick = async () => {
     if (existing && !$("#cLib", el).dataset.lib) {
-      if (await ask(`Delete this ${a.name.toLowerCase()} photo?`, "This can't be undone.", "Delete", true)) { await del("photos", existing.id); close(); }
+      await del("photos", existing.id); close();
+      toast(`${a.name} photo deleted`, "trash", undo(async () => { await put("photos", existing); render(); }));
       return;
     }
     $("#cFile", el).click();
@@ -849,33 +894,47 @@ async function handsFree() {
     const btn = $("#hfStart", el); btn.textContent = "Stop"; btn.classList.add("stop");
     $("#cFlip", el).style.visibility = "hidden";
     try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch {}
-    const saved = [];
-    for (let i = 0; i < STEPS.length; i++) {
-      const st = STEPS[i];
-      showStep(i); $("#hfTitle", el).textContent = `${i + 1} of 3 · ${ANGLES.find((a) => a.id === st.id).name}`;
-      speak(st.say);
-      for (let n = st.wait; n > 0; n--) {
-        if (cancelled) return;
+    const shots = {};
+    const nameOf = (id) => ANGLES.find((a) => a.id === id).name;
+    const runStep = async (i, solo) => {
+      const st = STEPS[i], nm = nameOf(st.id);
+      count.style.pointerEvents = ""; count.innerHTML = "";
+      showStep(i); $("#hfTitle", el).textContent = solo ? `Retake · ${nm}` : `${i + 1} of 3 · ${nm}`;
+      speak(solo ? `Retaking your ${nm.toLowerCase()} photo. Get into position.` : st.say);
+      for (let n = solo ? Math.max(st.wait, 8) : st.wait; n > 0; n--) {
+        if (cancelled) return false;
         count.textContent = n; count.classList.remove("tick"); void count.offsetWidth; count.classList.add("tick");
         if (n <= 3) beep(660, 90);
         await sleep(1000);
       }
-      if (cancelled) return;
+      if (cancelled) return false;
       count.textContent = ""; beep(1320, 160);
       const fl = $(".cam-flash", el); fl.classList.remove("go"); void fl.offsetWidth; fl.classList.add("go");
       const blob = await shrink(video, video.videoWidth, video.videoHeight, 1920, 0.92);
-      const c = await compress(blob);
-      await put("photos", { id: `${S.date}_${st.id}`, date: S.date, angle: st.id, full: c.full, thumb: c.thumb, at: Date.now() });
-      saved.push(c.thumb);
-      sayEl.textContent = `${ANGLES.find((a) => a.id === st.id).name} photo saved`;
-      await sleep(700);
-    }
-    showStep(3); speak("All done. Great job.");
-    $("#hfTitle", el).textContent = "All done";
-    count.innerHTML = `<div class="hf-done">${saved.map((b) => `<img src="${url(b)}" alt="">`).join("")}</div>`;
-    btn.textContent = "Done"; btn.classList.remove("stop");
-    btn.onclick = () => { close(); toast("All 3 photos saved", "checkc"); };
-    stop();
+      shots[st.id] = await compress(blob);
+      sayEl.textContent = `${nm} photo taken`;
+      await sleep(600);
+      return true;
+    };
+    const saveAll = async () => {
+      for (const st of STEPS) { const c = shots[st.id]; await put("photos", { id: `${S.date}_${st.id}`, date: S.date, angle: st.id, full: c.full, thumb: c.thumb, at: Date.now() }); }
+      close(); toast("All 3 photos saved", "checkc");
+    };
+    const review = () => {
+      showStep(3); $("#hfTitle", el).textContent = "Check your photos";
+      sayEl.textContent = "Not saved yet. Tap a photo to retake it, or Save all.";
+      count.classList.remove("tick"); count.style.pointerEvents = "auto";
+      count.innerHTML = `<div class="hf-done">${STEPS.map((st, i) => `<button data-re="${i}" aria-label="Retake ${nameOf(st.id)} photo"><img src="${url(shots[st.id].thumb)}" alt=""><span>${nameOf(st.id)}</span><em>Retake</em></button>`).join("")}</div>`;
+      btn.textContent = "Save all"; btn.classList.remove("stop"); btn.onclick = saveAll;
+      const dis = $("#cFlip", el); dis.style.visibility = "visible"; dis.innerHTML = `${icon("trash")}Discard`; dis.onclick = close;
+      count.querySelectorAll("[data-re]").forEach((b) => (b.onclick = async () => {
+        btn.textContent = "Stop"; btn.classList.add("stop"); btn.onclick = close; dis.style.visibility = "hidden";
+        if (await runStep(Number(b.dataset.re), true)) review();
+      }));
+    };
+    for (let i = 0; i < STEPS.length; i++) if (!(await runStep(i, false))) return;
+    speak("All done. Check your photos.");
+    review();
   };
   speak("Prop your phone up, then tap Start.");
   start();
@@ -939,6 +998,7 @@ async function viewCalendar() {
       <button class="circ" data-act="month" data-m="${nextMonth}" ${nextMonth > t.slice(0, 7) ? "disabled style='opacity:.3'" : ""} aria-label="Next month">${icon("right")}</button>
     </div>
     <div class="cal" id="hCalGrid">${dows.map((d) => `<span class="dow">${d}</span>`).join("")}${cells.map(cell).join("")}</div>
+    ${S.calMode === "rings" ? `<div class="ringkey"><span><i class="bg-indigo"></i>Morning: weigh-in + photos</span><span><i class="bg-pink"></i>Train: sets</span><span><i class="bg-orange"></i>Fuel: food + water</span></div>` : ""}
   </div></div><div class="col">
   ${peek}
   <div class="sh"><h2>This month</h2></div>
@@ -976,7 +1036,9 @@ async function viewProgress() {
   const latest = ws[ws.length - 1];
   const change = ws.length > 1 ? round1(toUnit(latest.kg - ws[0].kg)) : null;
   const angPhotos = photos.filter((p) => p.angle === S.cmpAngle).sort((a, b) => a.date.localeCompare(b.date));
-  const first = angPhotos[0], lastP = angPhotos[angPhotos.length - 1];
+  const first = angPhotos.find((p) => p.date === S.cmpA) || angPhotos[0];
+  const lastP = angPhotos.find((p) => p.date === S.cmpB) || angPhotos[angPhotos.length - 1];
+  const dateOpts = (sel) => angPhotos.map((p) => `<option value="${p.date}"${p === sel ? " selected" : ""}>${fmt(p.date, { day: "numeric", month: "short", year: "numeric" })}</option>`).join("");
 
   return `<div class="cols"><div class="col">
   <div class="seg" id="hRange">${["day", "week", "month"].map((x) => `<button data-act="range" data-r="${x}" class="${r === x ? "on" : ""}">${x === "day" ? "D" : x === "week" ? "W" : "M"}</button>`).join("")}</div>
@@ -991,6 +1053,7 @@ async function viewProgress() {
 
   <div id="hCompare"><div class="sh"><h2>Before and after</h2></div>
   <div class="seg">${ANGLES.map((a) => `<button class="${S.cmpAngle === a.id ? "on" : ""}" data-act="cmp" data-a="${a.id}">${a.name}</button>`).join("")}</div>
+  ${angPhotos.length > 1 ? `<div class="cmppick"><label><span>Before</span><select data-sel="cmpA" aria-label="Before photo date">${dateOpts(first)}</select></label><label><span>After</span><select data-sel="cmpB" aria-label="After photo date">${dateOpts(lastP)}</select></label></div>` : ""}
   ${first && lastP && first !== lastP ? `
     <div class="compare" id="cmpBox">
       <img src="${url(first.full)}" alt="First ${S.cmpAngle} photo"><img class="after" src="${url(lastP.full)}" alt="Latest ${S.cmpAngle} photo">
@@ -998,7 +1061,7 @@ async function viewProgress() {
       <span class="lbl l">${fmt(first.date, { day: "numeric", month: "short" })}</span><span class="lbl r">${fmt(lastP.date, { day: "numeric", month: "short" })}</span>
     </div>
     <input type="range" min="0" max="100" value="50" id="cmpRange" aria-label="Drag to compare before and after">`
-    : `<div class="card empty">Take ${S.cmpAngle} photos on two different mornings to compare them.</div>`}
+    : `<div class="card empty">${angPhotos.length > 1 ? "Pick two different dates to compare." : `Take ${S.cmpAngle} photos on two different mornings to compare them.`}</div>`}
   </div></div><div class="col">
   <div class="sh"><h2>${r === "day" ? "Day by day" : r === "week" ? "Week by week" : "Month by month"}</h2></div>
   ${keys.length ? `<div class="group">${keys.map((k, i) => {
@@ -1028,7 +1091,8 @@ function chart(series, r, goalKg) {
   const area = `M${pts[0]} L${pts.join(" L")} L${x(vs.length - 1)},${H - Pd.b} L${x(0)},${H - Pd.b} Z`;
   const lab = (k) => (r === "month" ? parseKey(k + "-01").toLocaleDateString(undefined, { month: "short" }) : fmt(k, { day: "numeric", month: "short" }));
   const li = vs.length - 1;
-  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Weight trend from ${round1(vs[0])} to ${round1(vs[li])} ${S.unit}">
+  const ptsData = vs.map((v, i) => ({ x: +x(i).toFixed(1), y: +y(v).toFixed(1), v: round1(v).toFixed(1), l: periodLabel(series[i].k, r) }));
+  return `<svg class="wchart" data-pts="${esc(JSON.stringify(ptsData))}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Weight trend from ${round1(vs[0])} to ${round1(vs[li])} ${S.unit}">
     <defs><linearGradient id="wg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--indigo)" stop-opacity=".25"/><stop offset="1" stop-color="var(--indigo)" stop-opacity="0"/></linearGradient></defs>
     ${[mx, (mx + mn) / 2, mn].map((v) => `<line x1="${Pd.l}" x2="${W - Pd.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--sep)"/><text x="${Pd.l - 7}" y="${y(v) + 4}" text-anchor="end">${round1(v)}</text>`).join("")}
     <path d="${area}" fill="url(#wg)"/>
@@ -1037,6 +1101,8 @@ function chart(series, r, goalKg) {
     ${vs.map((v, i) => `<circle cx="${x(i)}" cy="${y(v)}" r="${i === li ? 5 : 2.5}" fill="var(--indigo)" stroke="var(--card)" stroke-width="${i === li ? 3 : 0}"/>`).join("")}
     <text x="${Pd.l}" y="${H - 5}">${lab(series[0].k)}</text>
     <text x="${W - Pd.r}" y="${H - 5}" text-anchor="end">${lab(series[li].k)}</text>
+    <g class="chtip" visibility="hidden"><line y1="${Pd.t}" y2="${H - Pd.b}" stroke="var(--ink-2)" stroke-width="1" stroke-dasharray="3 3"/><circle r="6" fill="var(--indigo)" stroke="var(--card)" stroke-width="3"/>
+      <g class="chbub"><rect width="112" height="42" rx="10" fill="var(--ink)"/><text class="chv" x="56" y="18" text-anchor="middle"></text><text class="chd" x="56" y="34" text-anchor="middle"></text></g></g>
   </svg>`;
 }
 
@@ -1061,13 +1127,18 @@ function bind(m) {
       else if (act === "area") { if (S.tab !== "train") { S.tab = "train"; $("#tabs").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x.dataset.tab === "train")); } S.area = d.id || null; render(true); window.scrollTo(0, 0); }
       else if (act === "focus") toggleFocus(d.id);
       else if (act === "water") addWater(Number(d.d));
-      else if (act === "waterSet") setWaterTo(Number(d.n));
+      else if (act === "dayFold") { try { dayFolded() ? localStorage.removeItem("gj_dayfold") : localStorage.setItem("gj_dayfold", "1"); } catch {} render(); }
+      else if (act === "skipNext") {
+        const kinds = getSkips(), kind = d.kind;
+        setSkips([...kinds, kind]); await render();
+        toast("Hidden for today", "checkc", undo(() => { setSkips(getSkips().filter((k) => k !== kind)); render(); }));
+      }
       else if (act === "handsfree") handsFree();
       else if (act === "bodyView") { S.bodyView = d.v; render(); }
       else if (act === "logEx") logSheet(S.area, Number(d.i));
       else if (act === "shoot") shootFlow(d.angle);
       else if (act === "range") { S.range = d.r; render(); }
-      else if (act === "cmp") { S.cmpAngle = d.a; render(); }
+      else if (act === "cmp") { S.cmpAngle = d.a; S.cmpA = S.cmpB = null; render(); }
       else if (act === "calMode") { S.calMode = d.m; render(); }
       else if (act === "calSel") { S.calSel = d.k; render(); }
       else if (act === "month") { S.calMonth = d.m; render(); }
@@ -1079,6 +1150,23 @@ function bind(m) {
     let x0 = null;
     wk.addEventListener("touchstart", (e) => { x0 = e.touches[0].clientX; }, { passive: true });
     wk.addEventListener("touchend", (e) => { if (x0 === null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null; if (Math.abs(dx) > 50) changeWeek(dx < 0 ? 7 : -7); }, { passive: true });
+  }
+  m.querySelectorAll("[data-sel]").forEach((sel) => (sel.onchange = () => { S[sel.dataset.sel] = sel.value; render(); }));
+  const ch = $(".wchart", m);
+  if (ch) {
+    const pts = JSON.parse(ch.dataset.pts), tip = $(".chtip", ch);
+    const show = (e) => {
+      const r = ch.getBoundingClientRect(), xv = ((e.clientX - r.left) / r.width) * 340;
+      const p = pts.reduce((a, b) => (Math.abs(b.x - xv) < Math.abs(a.x - xv) ? b : a));
+      tip.setAttribute("visibility", "visible");
+      $("line", tip).setAttribute("x1", p.x); $("line", tip).setAttribute("x2", p.x);
+      $("circle", tip).setAttribute("cx", p.x); $("circle", tip).setAttribute("cy", p.y);
+      const bx = Math.min(Math.max(p.x - 56, 2), 340 - 114), by = p.y > 70 ? p.y - 54 : p.y + 14;
+      $(".chbub", tip).setAttribute("transform", `translate(${bx},${by})`);
+      $(".chv", tip).textContent = `${p.v} ${S.unit}`; $(".chd", tip).textContent = p.l;
+    };
+    ch.addEventListener("pointerdown", (e) => { ch.setPointerCapture?.(e.pointerId); show(e); });
+    ch.addEventListener("pointermove", (e) => { if (e.buttons || e.pointerType === "touch") show(e); });
   }
   const cmp = $("#cmpRange", m);
   if (cmp) cmp.oninput = () => $("#cmpBox", m).style.setProperty("--cut", cmp.value + "%");
