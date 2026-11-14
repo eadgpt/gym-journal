@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gym Journal</title>
+<meta name="theme-color" content="#eef0f3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0c0d0f" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Gym Journal">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="styles.css?v=12">
+<script>var de=document.documentElement;de.dataset.glass="on";de.dataset.anim="on";try{var t=localStorage.getItem("gj_theme");if(t==="light"||t==="dark")de.dataset.theme=t;if(localStorage.getItem("gj_glass")==="off")de.dataset.glass="off";de.dataset.anim=localStorage.getItem("gj_anim")==="off"?"off":"on";}catch(e){}</script>
+</head>
+<body>
+<div class="ambient" aria-hidden="true"></div>
+<header class="nav" id="nav">
+  <div class="nav-row">
+    <div class="left" id="navLeft"></div>
+    <span class="mini" id="navMini"></span>
+    <div class="acts" id="navActs"></div>
+  </div>
+</header>
+
+<main id="main"></main>
+
+<nav class="tabs" id="tabs" aria-label="Sections"></nav>
+
+<div id="sheetWrap" class="sheet-wrap" hidden>
+  <div class="sheet-bg" id="sheetBg"></div>
+  <div class="sheet" id="sheet" role="dialog" aria-modal="true"></div>
+</div>
+
+<div id="toast" class="toast" role="status" hidden></div>
+
+<script src="exercises.js?v=12"></script>
+<script src="app.js?v=12"></script>
+</body>
+</html>
