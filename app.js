@@ -1258,7 +1258,7 @@ async function importAll(file) {
 
 /* ======================================================================
    HELP GUIDE — spotlights each button with an arrow and a short note.
-   Opens by itself on the first visit only; afterwards tap ? any time.
+   Never opens by itself: tap ? (or Settings → Show the help guide).
    ====================================================================== */
 const HELP = {
   today: [
@@ -1400,8 +1400,6 @@ async function loadPrefs() {
   await loadPrefs();
   try { if (navigator.storage?.persist && !(await navigator.storage.persisted())) await navigator.storage.persist(); } catch {}
   await render(true);
-  let seen = false; try { seen = localStorage.getItem("gj_help_seen") === "1"; } catch {}
-  if (!seen) setTimeout(() => startHelp(true), animOn() ? 900 : 100);
   let openedOn = todayKey();
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) return;
