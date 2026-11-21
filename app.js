@@ -378,6 +378,11 @@ async function upNext(day, w, photos, sets, food) {
       if (missing) return card("photos", "shoot", `data-angle="${missing.id}"`, "bg-purple", "photo", `Up next · Photo ${photos.length + 1} of 3`, `Take your ${missing.name.toLowerCase()} photo`, missing.tip);
     }
   }
+  const plan = await getPlan(S.date);
+  if (plan?.items?.length && h < 22 && !skip.includes("train")) {
+    const left = plan.items.filter((it) => sets.filter((x) => x.ex === it.key).length < GOAL.perEx);
+    if (left.length) return card("train", "goTab", 'data-tab="train"', "bg-pink", "target", `Up next · Today's plan`, left.length === plan.items.length ? "Start your workout" : "Continue your workout", `${plan.items.length - left.length} of ${plan.items.length} done · next: ${exName(left[0].key)}`);
+  }
   if (!sets.length && h < 22 && !skip.includes("train")) {
     const sg = await suggestArea();
     const why = sg.focus ? "Your focus area" : sg.days >= 99 ? "Not trained yet" : `Last trained ${sg.days === 1 ? "yesterday" : `${sg.days} days ago`}`;
@@ -627,6 +632,21 @@ function areaExercises(areaId, withHidden) {
 const saveEx = () => meta("exlib", { names: EX.names, custom: EX.custom, hidden: EX.hidden });
 const IMG_BASE = "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/";
 
+/* ---------- Plan a workout: pick areas, get the best picks for them ---------- */
+const getPlan = (d) => meta("plan:" + d);
+const planTarget = (e) => e.t === "cardio" ? "20 min" : e.t === "time" ? `${GOAL.perEx} × 30s` : `${GOAL.perEx} × ${GOAL.reps}`;
+function buildPlan(areas) {
+  const per = areas.length === 1 ? 4 : areas.length === 2 ? 3 : 2;
+  const items = [];
+  areas.forEach((aid) => {
+    const avail = areaExercises(aid);
+    const picks = (PLANS[aid] || []).filter(([n]) => avail.some((e) => e.key === n)).map(([n, why]) => ({ area: aid, key: n, why }));
+    const extra = avail.filter((e) => !picks.some((p) => p.key === e.key)).map((e) => ({ area: aid, key: e.key, why: e.custom ? "Your own exercise." : "" }));
+    items.push(...[...picks, ...extra].slice(0, aid === "cardio" ? 1 : per));
+  });
+  return items;
+}
+
 async function lastSetsFor(ex, beforeDate) {
   const rows = (await req(store("sets").index("ex").getAll(ex))).filter((s) => s.date < beforeDate);
   if (!rows.length) return null;
@@ -641,7 +661,31 @@ async function viewTrain() {
     const load = {}; recent.forEach((s) => (load[s.area] = (load[s.area] || 0) + 1));
     const counts = {}; today.forEach((s) => (counts[s.area] = (counts[s.area] || 0) + 1));
     const order = [...AREAS].sort((a, b) => S.focus.includes(b.id) - S.focus.includes(a.id));
-    return `
+    const plan = await getPlan(S.date);
+    let planHTML;
+    if (plan?.items?.length) {
+      const rows = plan.items.map((it) => {
+        const e = areaExercises(it.area, true).find((x) => x.key === it.key) || { key: it.key, n: exName(it.key), t: "reps" };
+        const done = today.filter((x) => x.ex === it.key).length, target = e.t === "cardio" ? 1 : GOAL.perEx, full = done >= target;
+        return { html: `<div class="row exrow planrow${full ? " done" : ""}">
+          <button class="exmain" data-act="planLog" data-area="${it.area}" data-key="${esc(it.key)}">
+            <span class="tick">${full ? icon("check") : ""}</span>
+            <div class="main"><div class="t">${esc(e.n)}</div><div class="s"><span class="num">${planTarget(e)}</span>${it.why ? ` · ${esc(it.why)}` : ""}</div></div>
+            ${done && !full ? `<span class="badge">${done}/${target}</span>` : ""}
+          </button>
+          ${e.img ? `<button class="seehow" data-act="seeHow" data-area="${it.area}" data-key="${esc(it.key)}" aria-label="See how to do ${esc(e.n)}">${icon("photo")}<span>See how</span></button>` : ""}
+        </div>`, full };
+      });
+      const nDone = rows.filter((r) => r.full).length;
+      planHTML = `<div class="sh" style="margin-top:0"><h2>Today's plan</h2><span class="aside gray">${nDone === rows.length ? "All done" : `${nDone} of ${rows.length} done`}</span></div>
+        <div class="planbar"><i style="width:${Math.round(nDone / rows.length * 100)}%"></i></div>
+        <div class="group" id="hPlan">${rows.map((r) => r.html).join("")}</div>
+        <div class="foot"><button class="linkbtn" data-act="planNew">Change plan</button> · <button class="linkbtn" data-act="planClear">Clear plan</button></div>`;
+    } else {
+      planHTML = `<button class="plancta" id="hPlan" data-act="planNew"><span class="sq bg-pink">${icon("target")}</span><span class="main"><span class="t">Plan a workout</span><span class="s">Pick what you want to improve. Get the best exercises for it.</span></span>${icon("right", "i chev")}</button>`;
+    }
+    return `${planHTML}
+    <div class="sh"><h2>Or pick a muscle</h2></div>
     <div class="seg" id="hBodySeg">${["front", "back"].map((v) => `<button class="${S.bodyView === v ? "on" : ""}" data-act="bodyView" data-v="${v}">${v === "front" ? "Front" : "Back"}</button>`).join("")}</div>
     <div class="trainlay">
       <div class="bodywrap" id="hBody">${bodySVG(S.bodyView, load)}
@@ -1183,7 +1227,10 @@ function bind(m) {
       else if (act === "handsfree") handsFree();
       else if (act === "bodyView") { S.bodyView = d.v; render(); }
       else if (act === "logEx") logSheet(S.area, d.key);
-      else if (act === "seeHow") showHow(areaExercises(S.area, true).find((x) => x.key === d.key));
+      else if (act === "seeHow") showHow(areaExercises(d.area || S.area, true).find((x) => x.key === d.key));
+      else if (act === "planNew") planSheet();
+      else if (act === "planLog") logSheet(d.area, d.key);
+      else if (act === "planClear") { const old = await getPlan(S.date); await del("meta", "plan:" + S.date); render(); toast("Plan cleared", "trash", undo(async () => { await meta("plan:" + S.date, old); render(); })); }
       else if (act === "addEx") addExerciseSheet(S.area);
       else if (act === "unhide") { const keys = areaExercises(d.id, true).map((x) => x.key); EX.hidden = EX.hidden.filter((k) => !keys.includes(k)); await saveEx(); render(); toast("Exercises back in the list"); }
       else if (act === "shoot") shootFlow(d.angle);
@@ -1431,6 +1478,42 @@ function promptBox(title, message, value = "") {
   });
 }
 
+/* plan a workout */
+async function planSheet() {
+  const existing = await getPlan(S.date);
+  let sel = existing?.areas?.length ? [...existing.areas] : S.focus.length ? [...S.focus] : [];
+  openSheet({
+    title: "Plan a workout", left: "Cancel", right: "Use plan",
+    body: `
+      <div class="howto" style="margin-top:4px">What do you want to improve today? Pick one or more.</div>
+      <div class="areapick">${AREAS.map((a) => `<button class="apick${sel.includes(a.id) ? " on" : ""}" data-a="${a.id}">${S.focus.includes(a.id) ? icon("star", "i star") : ""}${a.name}</button>`).join("")}</div>
+      <div class="grouplabel" id="ppLabel"></div>
+      <div class="group" id="ppList"></div>
+      <div class="foot">Each exercise is ${GOAL.perEx} sets of ${GOAL.reps} (change in Settings → Goals). Fewer areas means more exercises per area.</div>`,
+    onOpen: (s) => {
+      const draw = () => {
+        const items = buildPlan(sel);
+        $("#ppLabel", s).textContent = items.length ? `Your workout · ${items.length} exercises` : "";
+        $("#ppList", s).innerHTML = items.length
+          ? items.map((it, i) => { const e = areaExercises(it.area, true).find((x) => x.key === it.key); return `<div class="row ppr" style="--i:${i}"><span class="ppn num">${i + 1}</span><div class="main"><div class="t">${esc(e.n)}</div><div class="s"><span class="num">${planTarget(e)}</span>${it.why ? ` · ${esc(it.why)}` : ""}</div></div></div>`; }).join("")
+          : `<div class="empty">Tap an area above to see suggested exercises.</div>`;
+        $("[data-sb=r]", s).disabled = !items.length;
+      };
+      s.querySelectorAll(".apick").forEach((b) => (b.onclick = () => {
+        const a = b.dataset.a; sel = sel.includes(a) ? sel.filter((x) => x !== a) : [...sel, a];
+        b.classList.toggle("on", sel.includes(a)); buzz(6); draw();
+      }));
+      draw();
+      $("[data-sb=r]", s).onclick = async () => {
+        const items = buildPlan(sel); if (!items.length) return;
+        await meta("plan:" + S.date, { areas: sel, items });
+        closeSheet(); if (S.tab !== "train") go("train"); else { S.area = null; render(); }
+        toast(`Plan ready · ${items.length} exercises`, "target");
+      };
+    }
+  });
+}
+
 /* add your own exercise */
 function addExerciseSheet(areaId) {
   const area = AREAS.find((a) => a.id === areaId);
@@ -1479,6 +1562,7 @@ const HELP = {
     ["#tabs", "Sections", "Move between Today, Train, Photos, Calendar and Progress."]
   ],
   train: [
+    ["#hPlan", "Plan a workout", "Pick what you want to improve and get the best exercises for it, with sets and reps. Tick them off as you go."],
     ["#hBodySeg", "Front or back", "Turn the body around to reach your back and glutes."],
     ["#hBody", "Body map", "Tap a muscle to see its exercises. Darker pink means more sets this week."],
     ["#hAreas", "Muscle groups", "The same areas as a list. The pink number shows sets logged today."],

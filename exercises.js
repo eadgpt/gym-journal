@@ -6,6 +6,8 @@ window.AREAS = [
     { n: "Barbell Bench Press", img: "Barbell_Bench_Press_-_Medium_Grip", eq: "Barbell", t: "reps", h: "Lie flat, lower bar to mid-chest, press up. Feet planted, shoulder blades squeezed." },
     { n: "Dumbbell Bench Press", img: "Dumbbell_Bench_Press", eq: "Dumbbells · flat bench", t: "reps", h: "Lie flat on the bench, dumbbells at chest height, palms facing your feet. Press up until your arms are straight, then lower slowly." },
     { n: "Incline Dumbbell Press", img: "Incline_Dumbbell_Press", eq: "Dumbbells", t: "reps", h: "Bench at 30°. Press dumbbells up and slightly in. Targets upper chest." },
+    { n: "Pec Deck (Chest Fly Machine)", img: "Butterfly", eq: "Machine", t: "reps", h: "Sit tall with your back on the pad, forearms or hands on the handles. Squeeze the handles together in front of your chest, pause, then open slowly." },
+    { n: "Smith Machine Bench Press", img: "Smith_Machine_Bench_Press", eq: "Smith machine · flat bench", t: "reps", h: "Set the bench so the bar lowers to mid-chest. Twist the bar to unhook, lower slowly, press up. The rails keep the bar steady, so it's safe without a spotter." },
     { n: "Machine Chest Press", img: "Machine_Bench_Press", eq: "Machine", t: "reps", h: "Handles at chest height. Push out smooth, slow on the way back." },
     { n: "Cable Fly", img: "Cable_Crossover", eq: "Cable", t: "reps", h: "Slight bend in elbows, hug a big tree. Squeeze chest at the middle." },
     { n: "Push-up", img: "Pushups", eq: "Bodyweight", t: "body", h: "Hands under shoulders, body straight. Chest to floor, push up." },
@@ -66,3 +68,15 @@ window.AREAS = [
     { n: "Jump Rope", img: "Rope_Jumping", eq: "Rope", t: "cardio", h: "Small hops on balls of feet, wrists turn the rope." }
   ]}
 ];
+
+// Best picks per area for "Plan a workout": in order of importance, with why.
+window.PLANS = {
+  chest: [["Barbell Bench Press", "Main chest builder. Heavy and simple."], ["Incline Dumbbell Press", "Builds the upper chest."], ["Pec Deck (Chest Fly Machine)", "Squeezes the middle of the chest. Safe finisher."], ["Dumbbell Bench Press", "Each side works alone, so evens out a weaker side."], ["Smith Machine Bench Press", "Steady bar, push hard without a spotter."]],
+  back: [["Lat Pulldown", "Builds back width (the V shape)."], ["Seated Cable Row", "Builds back thickness."], ["One-arm Dumbbell Row", "Each side alone, evens you out."], ["Face Pull", "Rear shoulders and better posture."]],
+  shoulders: [["Seated Dumbbell Press", "Overall shoulder size."], ["Lateral Raise", "Side shoulders, makes you look broader."], ["Rear Delt Fly", "Back of the shoulder, better posture."], ["Arnold Press", "Hits front and side together."]],
+  arms: [["Triceps Pushdown", "Triceps are most of your upper arm."], ["Barbell Curl", "Main biceps builder."], ["Hammer Curl", "Thicker arms and stronger forearms."], ["Overhead Triceps Extension", "Stretches and grows the long triceps."]],
+  legs: [["Back Squat", "Whole-leg strength."], ["Romanian Deadlift", "Back of the legs (hamstrings)."], ["Leg Press", "More leg work, easy on the back."], ["Calf Raise", "Calves."]],
+  glutes: [["Hip Thrust", "The best glute builder."], ["Bulgarian Split Squat", "One leg at a time, glutes and balance."], ["Cable Kickback", "Shapes the glutes. Good finisher."], ["Glute Bridge", "Easy to do anywhere."]],
+  core: [["Plank", "Core strength and a stable middle."], ["Hanging Knee Raise", "Lower abs."], ["Cable Crunch", "Abs with added weight."], ["Pallof Press", "Stops twisting, protects your back."]],
+  cardio: [["Incline Treadmill Walk", "Burns fat, easy on the joints."], ["Rowing Machine", "Works the whole body."], ["Stationary Bike", "Try 30s hard, 90s easy."]]
+};
