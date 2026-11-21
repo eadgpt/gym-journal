@@ -57,6 +57,7 @@ const P = {
   unit: '<path d="M4 7h16M4 12h10M4 17h6"/>',
   drop: '<path d="M12 3.5s6 6.4 6 10.5a6 6 0 0 1-12 0c0-4.1 6-10.5 6-10.5z"/>',
   minus: '<path d="M5 12h14"/>',
+  merge: '<path d="M6 4v5a4 4 0 0 0 4 4h4a4 4 0 0 1 4 4v3"/><path d="M6 20v-7"/><path d="M15 17l3 3 3-3"/>',
   pen: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
   target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>',
   wand: '<path d="M4 20L15 9M14 4v2M19 9h2M17.5 5.5L19 4M11 3l.6 1.4L13 5l-1.4.6L11 7l-.6-1.4L9 5l1.4-.6z"/>',
@@ -737,6 +738,7 @@ async function logSheet(areaId, key) {
       <div class="exactions">
         ${e.img ? `<button class="chipbtn" id="xSee">${icon("photo")}See how</button>` : ""}
         <button class="chipbtn" id="xRen">${icon("pen")}Rename</button>
+        <button class="chipbtn" id="xMerge">${icon("merge")}Merge</button>
         <button class="chipbtn" id="xDel">${icon("trash")}Remove</button>
       </div>
       ${e.h ? `<div class="howto">${esc(e.h)}</div>` : ""}
@@ -761,6 +763,7 @@ async function logSheet(areaId, key) {
         if (e.custom) { const c = EX.custom.find((x) => x.key === e.key); c.n = nm; delete EX.names[e.key]; } else EX.names[e.key] = nm;
         await saveEx(); $(".sbar .ttl", s).textContent = nm; toast(`Renamed to ${nm}`);
       };
+      $("#xMerge", s).onclick = () => mergeSheet(area.id, e);
       $("#xDel", s).onclick = async () => {
         if (!EX.hidden.includes(e.key)) EX.hidden.push(e.key);
         await saveEx(); closeSheet(); render();
@@ -1475,6 +1478,30 @@ function promptBox(title, message, value = "") {
     wrap.querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => done(b.dataset.a === "1")));
     inp.onkeydown = (ev) => { if (ev.key === "Enter") done(true); if (ev.key === "Escape") done(false); };
     document.body.appendChild(wrap); setTimeout(() => { inp.focus(); inp.select(); }, 50);
+  });
+}
+
+/* merge: move every logged set of one exercise into another, then remove the first */
+function mergeSheet(areaId, from) {
+  const others = areaExercises(areaId).filter((x) => x.key !== from.key);
+  openSheet({
+    title: "Merge into…", left: "Cancel",
+    body: `
+      <div class="howto" style="margin-top:4px">Moves all your logged sets of <b>${esc(from.n)}</b> into the exercise you pick, then takes <b>${esc(from.n)}</b> off the list.</div>
+      <div class="group">${others.map((o) => `<button class="row" data-into="${esc(o.key)}"><div class="main"><div class="t">${esc(o.n)}</div><div class="s">${esc(o.eq || "")}</div></div>${icon("right", "i chev")}</button>`).join("")}</div>`,
+    onOpen: (s) => s.querySelectorAll("[data-into]").forEach((b) => (b.onclick = async () => {
+      const to = others.find((o) => o.key === b.dataset.into);
+      const moved = await req(store("sets").index("ex").getAll(from.key));
+      for (const x of moved) await put("sets", { ...x, ex: to.key, area: areaId });
+      const wasCustom = EX.custom.find((c) => c.key === from.key);
+      if (wasCustom) EX.custom = EX.custom.filter((c) => c.key !== from.key); else if (!EX.hidden.includes(from.key)) EX.hidden.push(from.key);
+      await saveEx(); closeSheet(); render();
+      toast(`${moved.length} sets moved to ${to.n}`, "checkc", undo(async () => {
+        for (const x of moved) await put("sets", x);
+        if (wasCustom) EX.custom.push(wasCustom); else EX.hidden = EX.hidden.filter((k) => k !== from.key);
+        await saveEx(); render();
+      }));
+    }))
   });
 }
 

@@ -1,8 +1,8 @@
 // Offline support: keeps the app files on the phone. Your journal data is never sent anywhere.
-const CACHE = "gymjournal-v18";
+const CACHE = "gymjournal-v19";
 const PICS = "gymjournal-pictures"; // exercise pictures you've opened (kept across updates)
 const PIC_HOST = "https://raw.githubusercontent.com/yuhonas/free-exercise-db/";
-const FILES = ["./", "index.html", "styles.css?v=18", "app.js?v=18", "exercises.js?v=18", "manifest.json", "icons/icon-180.png", "icons/icon-192.png", "icons/icon-512.png"];
+const FILES = ["./", "index.html", "styles.css?v=19", "app.js?v=19", "exercises.js?v=19", "manifest.json", "icons/icon-180.png", "icons/icon-192.png", "icons/icon-512.png"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES))); self.skipWaiting(); });
 self.addEventListener("activate", (e) => {
   e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE && k !== PICS).map((k) => caches.delete(k)))));
