@@ -338,13 +338,13 @@ $("#sheetBg").onclick = closeSheet;
 function openAddMenu() {
   const bg = document.createElement("div"); bg.className = "menu-bg";
   const m = document.createElement("div"); m.className = "menu"; m.setAttribute("role", "menu");
-  const items = [["weigh", "Morning weigh-in", "scale", "c-indigo"], ["water", "Glass of water", "drop", "c-cyan"], ["food", "Food", "food", "c-orange"], ["drink", "Other drink", "drink", "c-cyan"], ["train", "Workout", "train", "c-pink"], ["photos", "Photos", "photo", "c-purple"]];
+  const items = [["weigh", "Morning weigh-in", "scale", "c-indigo"], ["feel", "Check-in: sleep & energy", "moon", "c-green"], ["water", "Glass of water", "drop", "c-cyan"], ["food", "Food", "food", "c-orange"], ["drink", "Other drink", "drink", "c-cyan"], ["train", "Workout", "train", "c-pink"], ["photos", "Photos", "photo", "c-purple"]];
   m.innerHTML = items.map(([id, n, ic, c]) => `<button data-add="${id}" role="menuitem"><span>${n}</span><span class="${c}">${icon(ic)}</span></button>`).join("");
   const close = () => { bg.remove(); m.remove(); };
   bg.onclick = close;
   m.querySelectorAll("button").forEach((b) => (b.onclick = () => {
     close(); const a = b.dataset.add;
-    if (a === "weigh") weighSheet(); else if (a === "water") addWater(1); else if (a === "food" || a === "drink") foodSheet(a); else go(a);
+    if (a === "weigh") weighSheet(); else if (a === "feel") getFeel(S.date).then(feelSheet); else if (a === "water") addWater(1); else if (a === "food" || a === "drink") foodSheet(a); else go(a);
   }));
   document.body.append(bg, m);
 }
@@ -402,7 +402,7 @@ async function viewToday() {
   const [food, w, sets, photos, mk, allW] = await Promise.all([
     byDate("food", S.date), get("weight", S.date), byDate("sets", S.date), byDate("photos", S.date), marks(ws, we), all("weight")
   ]);
-  const water = await getWater(S.date);
+  const water = await getWater(S.date), feel = await getFeel(S.date);
   const prev = allW.filter((x) => x.date < S.date).sort((a, b) => b.date.localeCompare(a.date))[0];
   const k = mk[S.date] || { w, f: food.length, t: sets.length, p: photos, wa: water };
   const [mv, tv, fv] = ringVals(k);
@@ -459,6 +459,13 @@ async function viewToday() {
         : `<div class="val"><span class="note">Nothing logged yet</span></div>`}
     </button>`;
 
+  const feelRow = (k, n) => feel?.[k] ? `<div class="feelrow"><span class="fl">${n}</span>${feelDots(feel[k])}<b>${FEEL[k][feel[k] - 1]}</b></div>` : "";
+  const feelTile = `<button class="tile" data-act="feel">
+      <div class="top c-green">${icon("moon")}Check-in<span class="tm">${icon(feel ? "right" : "plus")}</span></div>
+      ${feel ? `${feelRow("sleep", "Sleep")}${feelRow("energy", "Energy")}${feel.note ? `<div class="note feelnote">${esc(feel.note)}</div>` : ""}`
+        : `<div class="val"><span class="note">${isToday ? "How did you sleep? How's your energy?" : "No check-in this day"}</span></div>`}
+    </button>`;
+
   const shown = Math.min(16, Math.max(GOAL.water, water));
   const waterTile = `<div class="tile watertile" id="hWater">
       <div class="top c-cyan">${icon("drop")}Water<span class="tm">${water >= GOAL.water ? `${icon("check")}Goal reached` : `${GOAL.water - water} to go`}</span></div>
@@ -500,7 +507,7 @@ async function viewToday() {
 
   return `<div class="cols tgrid"><div class="col ca">${week}${rings}${next}</div><div class="col cb">
     <div class="sh"><h2>Summary</h2></div>
-    <div class="tiles" id="hTiles">${wTile}${waterTile}${tTile}${fTile}${pTile}</div>
+    <div class="tiles" id="hTiles">${wTile}${feelTile}${waterTile}${tTile}${fTile}${pTile}</div>
     </div><div class="col cc"><button class="sh shbtn${dayFolded() ? " folded" : ""}" data-act="dayFold" aria-expanded="${!dayFolded()}"><h2>Your day</h2><span class="aside gray">${items.length ? `${items.length} entr${items.length > 1 ? "ies" : "y"}` : ""}${icon("right", "i foldchev")}</span></button>
     <div class="group${dayFolded() ? " hide" : ""}" id="hDay">${items.length ? items.map((i) => i.html).join("") : `<div class="empty">${isToday ? "Your day fills in as you log. Start with the <b>morning weigh-in</b>, then add meals and drinks as you go." : "Nothing was logged on this day. You can still add entries with +."}</div>`}</div>
     ${notes}</div></div>`;
@@ -510,6 +517,43 @@ function setText(s) {
   if (s.min != null) return `${s.min} min`;
   if (s.sec != null) return `${s.sec}s`;
   return s.kg ? `${wFmt(s.kg).replace(/\.0$/, "")} ${S.unit} × ${s.reps}` : `${s.reps} reps`;
+}
+
+/* daily check-in: sleep + energy (1–5) and an optional note, kept in the settings store as "day:YYYY-MM-DD" (so backups include it) */
+const FEEL = { sleep: ["Awful", "Poor", "OK", "Good", "Great"], energy: ["Drained", "Low", "OK", "Good", "Strong"] };
+const getFeel = async (d) => (await meta("day:" + d)) || null;
+const feelDots = (n) => `<span class="fdots" aria-hidden="true">${[1, 2, 3, 4, 5].map((i) => `<i class="${i <= n ? "on" : ""}"></i>`).join("")}</span>`;
+function feelSheet(existing) {
+  const d = S.date, v = { sleep: existing?.sleep || 0, energy: existing?.energy || 0 };
+  const scale = (k, label) => `<div class="grouplabel">${label}</div>
+    <div class="rate" data-k="${k}" role="radiogroup" aria-label="${label}">${FEEL[k].map((w, i) => `<button role="radio" aria-checked="${v[k] === i + 1}" class="${v[k] === i + 1 ? "on" : ""}" data-v="${i + 1}"><b class="num">${i + 1}</b><span>${w}</span></button>`).join("")}</div>`;
+  openSheet({
+    title: "Daily check-in", left: "Cancel", right: existing ? "Save" : "Add",
+    body: `
+      <div class="howto">${fmt(d, { weekday: "long", day: "numeric", month: "long" })}</div>
+      ${scale("sleep", "How did you sleep?")}
+      ${scale("energy", "Energy today")}
+      <div class="grouplabel">Note <span class="muted">(optional)</span></div>
+      <div class="field"><textarea id="dNote" placeholder="Late night, sore legs, felt strong…">${esc(existing?.note || "")}</textarea></div>
+      ${existing ? `<div class="group" style="margin-top:10px"><button class="row center danger" id="dDel">Delete check-in</button></div>` : ""}`,
+    onOpen: (s) => {
+      s.querySelectorAll(".rate").forEach((g) => g.querySelectorAll("button").forEach((b) => (b.onclick = () => {
+        const k = g.dataset.k, n = +b.dataset.v; v[k] = v[k] === n ? 0 : n; // tap again to clear
+        g.querySelectorAll("button").forEach((x) => { const on = +x.dataset.v === v[k]; x.classList.toggle("on", on); x.setAttribute("aria-checked", on); });
+        buzz(6);
+      })));
+      $("[data-sb=r]", s).onclick = async () => {
+        const note = $("#dNote", s).value.trim();
+        if (!v.sleep && !v.energy && !note) { toast("Pick a number or write a note", "x"); return; }
+        await meta("day:" + d, { sleep: v.sleep || null, energy: v.energy || null, note });
+        closeSheet(); buzz(12); render(); toast(existing ? "Check-in saved" : "Check-in added");
+      };
+      if (existing) $("#dDel", s).onclick = async () => {
+        await del("meta", "day:" + d); closeSheet(); render();
+        toast("Check-in deleted", "trash", undo(async () => { await meta("day:" + d, existing); render(); }));
+      };
+    }
+  });
 }
 
 /* weigh-in sheet */
@@ -723,6 +767,7 @@ async function logSheet(areaId, key) {
   const area = AREAS.find((a) => a.id === areaId), e = areaExercises(areaId, true).find((x) => x.key === key);
   if (!e) return;
   const last = await lastSetsFor(e.key, S.date);
+  const best = e.t === "cardio" ? null : bestSet((await req(store("sets").index("ex").getAll(e.key))).filter((x) => x.date <= S.date));
   const todays = async () => (await req(store("sets").index("ex").getAll(e.key))).filter((s) => s.date === S.date).sort((a, b) => a.at - b.at);
   let cur = await todays();
   const seed = cur[cur.length - 1] || last?.sets[0];
@@ -743,7 +788,8 @@ async function logSheet(areaId, key) {
       </div>
       ${e.h ? `<div class="howto">${esc(e.h)}</div>` : ""}
       <div class="setgoal" id="sGoal"></div>
-      ${last ? `<div class="group" style="margin-bottom:16px"><div class="row ico"><span class="sq bg-pink">${icon("clock")}</span><div class="main"><div class="t">Last time · ${fmt(last.date, { weekday: "short", day: "numeric", month: "short" })}</div><div class="s num">${last.sets.map(setText).join(" · ")}</div></div></div></div>` : ""}
+      ${last ? `<div class="group" style="margin-bottom:16px"><div class="row ico"><span class="sq bg-pink">${icon("clock")}</span><div class="main"><div class="t">Last time · ${fmt(last.date, { weekday: "short", day: "numeric", month: "short" })}</div><div class="s num">${last.sets.map(setText).join(" · ")}</div></div></div>
+        ${best ? `<div class="row ico"><span class="sq bg-orange">${icon("star")}</span><div class="main"><div class="t">Your best · <span class="num">${setText(best)}</span></div><div class="s">${fmt(best.date, { day: "numeric", month: "short", year: "numeric" })} · beat it for a new record</div></div></div>` : ""}</div>` : ""}
       ${inputs}
       <button class="btn fill block" id="sAdd">${icon("plus")}<span>Add set</span></button>
       <button class="btn block" id="sCancelEdit" style="margin-top:8px" hidden>Cancel change</button>
@@ -772,7 +818,8 @@ async function logSheet(areaId, key) {
       const drawGoal = () => {
         const g = $("#sGoal", s); if (!g) return;
         const n = cur.length, of = GOAL.perEx;
-        g.innerHTML = `<span class="sgtxt">${n >= of ? `${icon("check")}All ${of} sets done` : `Set ${n + 1} of ${of}`}</span><span class="sgdots">${[...Array(Math.max(of, n))].map((_, i) => `<i class="${i < n ? "on" : ""}"></i>`).join("")}</span>`;
+        const prev = editing ? null : last?.sets[n];
+        g.innerHTML = `<span class="sgtxt"><span class="sgl">${n >= of ? `${icon("check")}All ${of} sets done` : `Set ${n + 1} of ${of}`}</span>${prev ? `<small class="sglast">Last time: <span class="num">${setText(prev)}</span></small>` : ""}</span><span class="sgdots">${[...Array(Math.max(of, n))].map((_, i) => `<i class="${i < n ? "on" : ""}"></i>`).join("")}</span>`;
       };
       let editing = null;
       const setEdit = (x) => {
@@ -790,7 +837,7 @@ async function logSheet(areaId, key) {
       const drawList = (newId) => {
         if (!s.isConnected || !$("#sList", s)) return;
         $("#sList", s).innerHTML = cur.length
-          ? cur.map((x, i) => `<div class="row${x.id === newId ? " new" : ""}${editing?.id === x.id ? " editing" : ""}"><div class="setrow main"><span class="n">${i + 1}</span><button class="w setpick" data-edit="${x.id}" aria-label="Change set ${i + 1}">${setText(x)}</button><button class="x" data-del="${x.id}" aria-label="Delete set ${i + 1}">${icon("x")}</button></div></div>`).join("")
+          ? cur.map((x, i) => `<div class="row${x.id === newId ? " new" : ""}${editing?.id === x.id ? " editing" : ""}"><div class="setrow main"><span class="n">${i + 1}</span><button class="w setpick" data-edit="${x.id}" aria-label="Change set ${i + 1}${x.pr ? ", personal best" : ""}">${setText(x)}${x.pr ? icon("star", "i prstar") : ""}</button><button class="x" data-del="${x.id}" aria-label="Delete set ${i + 1}">${icon("x")}</button></div></div>`).join("")
           : `<div class="empty">No sets yet. Set the numbers, then tap <b>Add set</b> after each one.</div>`;
         s.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => setEdit(cur.find((c) => c.id === b.dataset.edit))));
         s.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
@@ -801,6 +848,7 @@ async function logSheet(areaId, key) {
         }));
       };
       drawList();
+      drawGoal();
       $("#sCancelEdit", s).onclick = () => setEdit(null);
       $("#sAdd", s).onclick = async () => {
         const row = editing ? { ...editing } : { id: uid(), date: S.date, at: Date.now(), ex: e.key, area: area.id };
@@ -809,13 +857,35 @@ async function logSheet(areaId, key) {
         else { row.kg = round2(fromUnit(parseFloat($("#sW", s).value) || 0)); row.reps = parseInt($("#sR", s).value) || 0; }
         if (!(row.min || row.sec || row.reps)) { toast("Enter a number first", "x"); return; }
         const wasEdit = !!editing;
+        const pr = wasEdit ? null : prKind(row, (await req(store("sets").index("ex").getAll(e.key))));
+        if (pr) row.pr = true;
         await put("sets", row); cur = await todays(); editing = null; setEdit(null); drawList(row.id); buzz(15);
         drawGoal();
-        toast(wasEdit ? "Set changed" : cur.length === GOAL.perEx ? `All ${GOAL.perEx} sets done` : `Set ${cur.length} of ${GOAL.perEx} saved`, cur.length === GOAL.perEx && !wasEdit ? "star" : "checkc");
+        if (pr) toast(`${prText[pr]} · ${setText(row)}`, "star");
+        else toast(wasEdit ? "Set changed" : cur.length === GOAL.perEx ? `All ${GOAL.perEx} sets done` : `Set ${cur.length} of ${GOAL.perEx} saved`, cur.length === GOAL.perEx && !wasEdit ? "star" : "checkc");
       };
     }
   });
 }
+
+/* ---------- personal bests ---------- */
+const e1rm = (x) => x.kg * (1 + x.reps / 30); // estimated one-rep max (Epley)
+const setScore = (x) => x.min != null ? x.min : x.sec != null ? x.sec : x.kg ? e1rm(x) : x.reps || 0;
+function bestSet(rows) {
+  const pool = rows.some((x) => x.kg) ? rows.filter((x) => x.kg) : rows;
+  return pool.reduce((b, x) => (!b || setScore(x) > setScore(b) ? x : b), null);
+}
+// what kind of record a new set is, compared with every earlier set of that exercise (needs history from an earlier day)
+function prKind(row, hist) {
+  if (row.min != null || !hist.some((h) => h.date < row.date)) return null;
+  if (row.sec != null) { const t = hist.filter((h) => h.sec != null); return t.length && row.sec > Math.max(...t.map((h) => h.sec)) ? "time" : null; }
+  if (!row.kg) { const b = hist.filter((h) => !h.kg && h.reps); return b.length && row.reps > Math.max(...b.map((h) => h.reps)) ? "reps" : null; }
+  const w = hist.filter((h) => h.kg);
+  if (!w.length) return null;
+  if (row.kg > Math.max(...w.map((h) => h.kg))) return "weight";
+  return e1rm(row) > Math.max(...w.map(e1rm)) + 0.01 ? "best" : null;
+}
+const prText = { weight: "Heaviest yet", best: "New best", reps: "Most reps yet", time: "Longest yet" };
 
 /* ======================================================================
    PHOTOS
@@ -1071,7 +1141,7 @@ async function viewCalendar() {
 
   let peek = "";
   if (S.calSel && S.calSel.startsWith(S.calMonth)) {
-    const k = mk[S.calSel];
+    const k = mk[S.calSel], f = await getFeel(S.calSel);
     const sets = k?.t ? await byDate("sets", S.calSel) : [];
     const names = [...new Set(sets.map((s) => s.ex))].map(exName);
     peek = `<div class="sh"><h2>${fmt(S.calSel, { weekday: "long", day: "numeric", month: "short" })}</h2><button class="aside" data-act="day" data-k="${S.calSel}" data-to="today">Open day</button></div>
@@ -1080,6 +1150,7 @@ async function viewCalendar() {
         <div class="pr"><span class="k indigo">Morning</span> <b>${k ? (k.w ? 1 : 0) + Math.min(3, k.p.length) : 0}/4</b>${k?.w ? `<span>· ${wFmt(k.w.kg)} ${S.unit}</span>` : ""}</div>
         <div class="pr"><span class="k pink">Train</span> <b>${k?.t || 0} sets</b>${names.length ? `<span>· ${esc(names.slice(0, 2).join(", "))}${names.length > 2 ? "…" : ""}</span>` : ""}</div>
         <div class="pr"><span class="k orange">Fuel</span> <b>${k?.f || 0}/${GOAL.fuel}</b><span>· ${k?.wa || 0} water</span></div>
+        ${f && (f.sleep || f.energy) ? `<div class="pr"><span class="k green">Feel</span> <b>Sleep ${f.sleep || "–"} · Energy ${f.energy || "–"}</b></div>` : ""}
       </div></div>`;
   }
 
@@ -1114,13 +1185,14 @@ function periodLabel(p, range) {
 }
 
 async function viewProgress() {
-  const [weights, sets, food, photos] = await Promise.all([all("weight"), all("sets"), all("food"), all("photos")]);
+  const [weights, sets, food, photos, feels] = await Promise.all([all("weight"), all("sets"), all("food"), all("photos"), req(store("meta").getAll(IDBKeyRange.bound("day:", "day:\uffff")))]);
   const r = S.range;
   const groups = new Map();
-  const g = (k) => { const p = periodKey(k, r); if (!groups.has(p)) groups.set(p, { w: [], sets: 0, days: new Set(), food: 0, drink: 0, photo: null }); return groups.get(p); };
+  const g = (k) => { const p = periodKey(k, r); if (!groups.has(p)) groups.set(p, { w: [], sets: 0, days: new Set(), food: 0, drink: 0, photo: null, sl: [], en: [] }); return groups.get(p); };
   weights.forEach((w) => g(w.date).w.push(w));
   sets.forEach((s) => { const x = g(s.date); x.sets++; x.days.add(s.date); });
   food.forEach((f) => (f.kind === "drink" ? g(f.date).drink++ : g(f.date).food++));
+  feels.forEach((m) => { const v = m.val || {}; if (!v.sleep && !v.energy) return; const x = g(m.key.slice(4)); if (v.sleep) x.sl.push(v.sleep); if (v.energy) x.en.push(v.energy); });
   photos.filter((p) => p.angle === "front").forEach((p) => { const x = g(p.date); if (!x.photo || p.date > x.photo.date) x.photo = p; });
 
   const keys = [...groups.keys()].sort().reverse();
@@ -1164,6 +1236,8 @@ async function viewProgress() {
     const bits = [];
     if (x.days.size) bits.push(r === "day" ? `${x.sets} sets` : `${x.days.size} workout day${x.days.size > 1 ? "s" : ""}`);
     if (x.food + x.drink) bits.push(`${x.food + x.drink} food & drink`);
+    const mean = (a) => (a.length ? round1(a.reduce((t, n) => t + n, 0) / a.length) : null), sl = mean(x.sl), en = mean(x.en);
+    if (sl || en) bits.push(`${r === "day" ? "Sleep" : "Avg sleep"} ${sl ?? "–"}, energy ${en ?? "–"}`);
     return `<button class="row" data-act="day" data-k="${r === "month" ? k + "-01" : k}" data-to="${r === "month" ? "calendar" : "today"}" data-month="${r === "month" ? k : ""}">
       ${x.photo ? `<img class="thumb" src="${url(x.photo.thumb)}" alt="">` : `<span class="thumb" style="background:var(--fill);display:grid;place-items:center;color:var(--ink-2)">${icon("photo")}</span>`}
       <div class="main"><div class="t">${esc(periodLabel(k, r))}</div><div class="s">${bits.length ? bits.join(" · ") : "No workouts or meals"}</div></div>
@@ -1212,6 +1286,7 @@ function bind(m) {
       if (act === "addFood") foodSheet(d.kind);
       else if (act === "editFood") foodSheet(null, await get("food", d.id));
       else if (act === "weigh") weighSheet();
+      else if (act === "feel") feelSheet(await getFeel(S.date));
       else if (act === "goTab") go(d.tab);
       else if (act === "day") {
         if (d.month) { S.calMonth = d.month; S.calSel = null; go("calendar"); return; }
